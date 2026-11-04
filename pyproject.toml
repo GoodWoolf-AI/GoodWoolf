@@ -1,0 +1,33 @@
+[project]
+name = "goodwoolf"
+version = "0.0.1"
+description = "Building foundation models on commodity hardware"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.5.0",
+    "datasets>=5.0.0",
+    "numpy>=2.4.6",
+    "tiktoken>=0.13.0",
+    "torch>=2.12.0",
+    "tqdm>=4.68.1",
+    "transformers>=5.10.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["goodwoolf", "goodwoolf.*"]
+# enable folders as packages without __init__ files
+namespaces = true
+
+# build dist package with non-python files
+[tool.setuptools.package-data]
+goodwoolf = [
+    "config/**/*.json",
+    "config/**/*.jinja",
+    "config/**/*.yaml",
+]
+
+[project.scripts]
+goodwoolf = "goodwoolf.main:main"
+gw = "goodwoolf.main:main"
