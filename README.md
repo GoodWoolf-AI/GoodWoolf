@@ -14,25 +14,25 @@ GoodWoolf builds large foundation models on commodity hardware using the followi
 
 Learn more by following the online documenation:
 
-- [Get Started](#more-about-goodwoolf)
-  - [Introduction](#introduction)
-- [Features](#features)
-  - [Training Process](#training-process)
-  - [Training Ledger](#training-ledger)
-  - [Collective Training Time](#collective-training-time)
-  - [Model Poisoning Controls](#model-poisoning-controls)
-- [Setup](#setup)
-  - [Python Environment](#python-environment)
-  - [Virtaul Memory](#virtaul-memory)
-- [Usage](#usage)
-  - [Naming Conventions](#naming-conventions)
-  - [Prepare training data](#prepare-training-data)
-  - [Download model weights](#download-model-weights)
-  - [Train model](#train-model)
-  - [Generate text](#generate-text)
-  - [Create a new model](#create-a-new-model)
-  - [Publish a new model](#publish-a-new-model)
-  - [Publish a model update](#publish-a-model-update)
+- [Get Started](https://docs.googwoolf.ai/)
+  - [Introduction](https://docs.googwoolf.ai/introduction)
+- [Features](https://docs.googwoolf.ai/category/features)
+  - [Training Process](https://docs.googwoolf.ai/features/training-process)
+  - [Training Ledger](https://docs.googwoolf.ai/features/training-ledger)
+  - [Collective Training Time](https://docs.googwoolf.ai/features/training-time)
+  - [Model Poisoning Controls](https://docs.googwoolf.ai/features/model-poisoning)
+- [Configure](https://docs.googwoolf.ai/category/configure)
+  - [Python Environment](https://docs.googwoolf.ai/setup/environment)
+  - [Virtaul Memory](https://docs.googwoolf.ai/setup/virtual-memory)
+- [Usage](https://docs.googwoolf.ai/category/usage)
+  - [Naming Conventions](https://docs.googwoolf.ai/usage/naming-conventions)
+  - [Prepare training data](https://docs.goodwoolf.ai/usage/prepare-data)
+  - [Download model weights](https://docs.googwoolf.ai/usage/download-model)
+  - [Train model](https://docs.googwoolf.ai/usage/train-model)
+  - [Generate text](https://docs.googwoolf.ai/usage/generate-text)
+  - [Create a new model](https://docs.googwoolf.ai/usage/create-model)
+  - [Publish a new model](https://docs.googwoolf.ai/usage/publish-model)
+  - [Publish a model update](https://docs.googwoolf.ai/usage/publish-update)
 
 You are welcome to contribute to training of an existing model or to launch a brand-new one.
 
@@ -43,13 +43,13 @@ The project consists of two repositories:
 - [GoodWoolf Core](https://github.com/GoodWoolf-AI/GoodWoolf) (this repository) - the training framework
 - [GoodWoolf Training Ledger](https://hf.co/datasets/GoodWoolf/Training-Ledger) - the public training log
 
-### Training Workflow
+### Collaborative Training Workflow
 
 The training process is hardware-agnostic, parallel, and completely asynchronous.
 
 ```bash
 =======================================================
-Visual represenation of Decentralized Training Workflow
+Visual represenation of Collaborative Training Workflow
 =======================================================
 
           +-----------+----------+-----------+
