@@ -88,7 +88,7 @@ Visual represenation of Decentralized Training Workflow
        |   Auditors                  |-------+
        |-----------------------------|
        | Validate and aggregate      |
-       | accepted updates            |
+       | model updates               |
        | Publish updated model       |
        | Pull request                |
        +-----------------------------+
