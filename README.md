@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://goodwoolf.ai">
-    <img src="https://www.goodwoolf.ai/images/logo.svg" alt="GoodWoolf" width="200" style="border-radius: 20%;"/>
+    <img src="img/goodwoolf.svg" alt="GoodWoolf" width="200"/>
   </a>
 </p>
 
@@ -22,6 +22,8 @@ Learn more by following the online documenation:
   - [Collective Training Time](#collective-training-time)
   - [Model Poisoning Controls](#model-poisoning-controls)
 - [Setup](#setup)
+  - [Python Environment](#python-environment)
+  - [Virtaul Memory](#virtaul-memory)
 - [Usage](#usage)
   - [Naming Conventions](#naming-conventions)
   - [Prepare training data](#prepare-training-data)
