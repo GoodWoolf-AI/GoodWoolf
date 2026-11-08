@@ -148,9 +148,9 @@ goodwoolf run <vendor>/<model> --prompt "A long time ago..."
 
 ## Get involved
 
-GoodWoolf is built by an open-source community.
+GoodWoolf is built by an open-source community project.
 
-Whether you're improving the core platform, building integrations, contributing infrastructure, fixing bugs, writing documentation, or creating new tools, contributions are welcome.
+Whether you're trainig and sharing models, improving the platform, fixing bugs or writing documentation, your contributions are welcome.
 
 ## License
 - [GoodWoolf](https://github.com/GoodWoolf-AI/GoodWoolf): MIT
