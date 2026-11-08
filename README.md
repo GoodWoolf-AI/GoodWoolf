@@ -1,15 +1,43 @@
+
 <p align="center">
   <a href="https://goodwoolf.ai">
-    <img src="img/goodwoolf.svg" alt="GoodWoolf" width="200"/>
+    <img src="https://github.com/GoodWoolf-AI/.github/raw/main/profile/goodwoolf.svg" width="200" alt="GoodWoolf" />
   </a>
 </p>
 
-# GoodWoolf
+<h1 align="center">
+  <a href="https://goodwoolf.ai">GoodWoolf</a>
+</h1>
+
+<p align="center">
+  <strong>AI by the People</strong>
+</p>
+
+<p align="center">
+  Foundation Models · Commodity Hardware · Collaborative Training
+</p>
+
+<p align="center">
+  <a href="https://goodwoolf.ai">Website</a>
+  &nbsp;·&nbsp;
+  <a href="https://docs.goodwoolf.ai">Docs</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/GoodWoolf-AI/GoodWoolf">Main Repository</a>
+  &nbsp;·&nbsp;
+  <a href="https://huggingface.co/datasets/GoodWoolf/Training-Ledger">Training-Ledger</a>
+</p>
+
+<br/>
+
+## Building Foundation Models Collaboratively on Commodity Hardware.
 
 GoodWoolf builds large foundation models on commodity hardware using the following principles:
 
+- **Open Collaboration.**
+Enable collective model development across independent contributors, coordinated through a shared public ledger rather than centralized organizations or infrastructure.
+
 - **Virtual Memory Extension:** Expanding effective memory beyond physical RAM by leveraging storage-based virtual memory.
-- **Central Training Ledger:** Coordinating fully asynchronous, decentralized state transitions through a shared public ledger.
+
 - **Data-Independent Scaling:** Decoupling total training time from global data volume, bounding system latency to individual run durations rather than aggregate data sizes.
 
 Learn more by following the online documenation:
@@ -34,9 +62,7 @@ Learn more by following the online documenation:
   - [Publish a new model](https://docs.goodwoolf.ai/usage/publish-model)
   - [Publish a model update](https://docs.goodwoolf.ai/usage/publish-update)
 
-You are welcome to contribute to training of an existing model or to launch a brand-new one.
-
-### Project Structure
+## Project Structure
 
 The project consists of two repositories:
 
@@ -120,6 +146,12 @@ goodwoolf pretrain <vendor>/<model> <dataset>
 goodwoolf run <vendor>/<model> --prompt "A long time ago..."
 ```
 
+## Get involved
+
+GoodWoolf is built by an open-source community.
+
+Whether you're improving the core platform, building integrations, contributing infrastructure, fixing bugs, writing documentation, or creating new tools, contributions are welcome.
+
 ## License
-- [GoodWoolf Core](https://github.com/GoodWoolf-AI/GoodWoolf): MIT
+- [GoodWoolf](https://github.com/GoodWoolf-AI/GoodWoolf): MIT
 - [GoodWoolf Training Ledger](https://hf.co/datasets/GoodWoolf/Training-Ledger): OpenMDW
