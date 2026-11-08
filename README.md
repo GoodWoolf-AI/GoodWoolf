@@ -29,12 +29,12 @@
 
 <br/>
 
-## Building Foundation Models Collaboratively on Commodity Hardware.
+## Building Foundation Models Collaboratively on Commodity Hardware
 
 GoodWoolf builds large foundation models on commodity hardware using the following principles:
 
 - **Open Collaboration.**
-Enable collective model development across independent contributors, coordinated through a shared public ledger rather than centralized organizations or infrastructure.
+Enable collective model development across independent contributors, coordinated through a shared public training ledger.
 
 - **Virtual Memory Extension:** Expanding effective memory beyond physical RAM by leveraging storage-based virtual memory.
 
