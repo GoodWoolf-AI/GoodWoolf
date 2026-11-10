@@ -66,7 +66,7 @@ Learn more by following the online documenation:
 
 The project consists of two repositories:
 
-- [GoodWoolf Core](https://github.com/GoodWoolf-AI/GoodWoolf) (this repository) - the training framework
+- [GoodWoolf](https://github.com/GoodWoolf-AI/GoodWoolf) (this repository) - the training framework
 - [GoodWoolf Training Ledger](https://hf.co/datasets/GoodWoolf/Training-Ledger) - the public training log
 
 ### Collaborative Training Workflow

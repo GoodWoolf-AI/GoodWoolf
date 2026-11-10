@@ -3,17 +3,22 @@
 setup:
 	uv sync
 
+# Install publish dependencies (twine, wheel)
+.PHONY: setup-publish
+setup-publish:
+	uv pip install ".[publish]"
+
 # Build distribution artifacts
 .PHONY: build
 build:
 	uv build
 
-# Publish to PyPi
+# Publish to PyPi.org
 .PHONY: publish
 publish:
 	uv publish
 
-# Publish to PyPy test
+# Publish to test.PyPi.org
 .PHONY: publish-test
 publish-test:
 	uv run python -m twine upload --repository testpypi dist/*

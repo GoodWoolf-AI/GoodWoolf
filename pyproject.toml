@@ -28,6 +28,12 @@ goodwoolf = [
     "config/**/*.yaml",
 ]
 
+[project.optional-dependencies]
+publish = [
+    "twine>=5.0.0",
+    "wheel>=0.43.0",
+]
+
 [project.scripts]
 goodwoolf = "goodwoolf.main:main"
 gw = "goodwoolf.main:main"
