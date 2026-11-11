@@ -33,8 +33,7 @@
 
 GoodWoolf builds large foundation models on commodity hardware using the following principles:
 
-- **Open Collaboration.**
-Enable collective model development across independent contributors, coordinated through a shared public training ledger.
+- **Open Collaboration:** Enable collective model development across independent contributors, coordinated through a shared public training ledger.
 
 - **Virtual Memory Extension:** Expanding effective memory beyond physical RAM by leveraging storage-based virtual memory.
 
