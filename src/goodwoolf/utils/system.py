@@ -98,10 +98,13 @@ def hash_files(file_list, verbose=True):
     return sha1.hexdigest()
 
 
-def download_file(file_url, save_path, progress=None):
+def download_file(file_url, save_path, progress=None, create_path=True):
     """
     Download a file from a URL to a local path using streaming.
     """
+    if create_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+
     with requests.get(file_url, stream=True, timeout=60) as response:
         response.raise_for_status()
 
