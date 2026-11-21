@@ -290,9 +290,8 @@ class GPT(nn.Module):
         return logits
 
 
-class Model(nn.Module):
+class Model(GPT):
     def __init__(self, config):
-        super().__init__()
         name = model_name_from_path(__file__)
         print(f"Initializing model {name}", file=sys.stderr)
 
@@ -312,19 +311,22 @@ class Model(nn.Module):
             n_embd=n_embd,
             window_pattern=str(getattr(config, "window_pattern", "SSSL")),
         )
-        self.model = GPT(gpt_config)
+        super().__init__(gpt_config)
 
     def forward(self, input_ids, labels=None, **kwargs):
         loss_reduction = kwargs.get("loss_reduction", "mean")
-        output = self.model(input_ids, targets=labels, loss_reduction=loss_reduction)
+        output = super().forward(input_ids, targets=labels, loss_reduction=loss_reduction)
         if labels is None:
             return SimpleNamespace(loss=None, logits=output)
         return SimpleNamespace(loss=output, logits=None)
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
-        if state_dict and not any(k.startswith("model.") for k in state_dict):
-            state_dict = {f"model.{k}": v for k, v in state_dict.items()}
-        return super().load_state_dict(state_dict, strict=strict, assign=assign)
+        normalized = {}
+        for key, value in state_dict.items():
+            if key.startswith("_orig_mod."):
+                key = key.removeprefix("_orig_mod.")
+            normalized[key] = value
+        return super().load_state_dict(normalized, strict=strict, assign=assign)
 
     @torch.inference_mode()
     def generate(
@@ -340,7 +342,7 @@ class Model(nn.Module):
     ):
         ids = input_ids
         for _ in range(max_new_tokens):
-            logits = self.model(ids)[:, -1, :]
+            logits = super().forward(ids)[:, -1, :]
             if top_k is not None and top_k > 0:
                 values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits = logits.masked_fill(logits < values[:, [-1]], -float("inf"))
@@ -386,7 +388,7 @@ class Model(nn.Module):
                 next_id = forced_tokens.pop(0)
                 next_ids = torch.tensor([[next_id]], dtype=torch.long, device=device)
             else:
-                logits = self.model(ids)[:, -1, :]
+                logits = super().forward(ids)[:, -1, :]
                 if top_k is not None and top_k > 0:
                     values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                     logits = logits.masked_fill(logits < values[:, [-1]], -float("inf"))
@@ -453,7 +455,7 @@ class Model(nn.Module):
                     next_ids = torch.tensor([[next_id]], dtype=torch.long, device=device)
                     sampled = False
                 else:
-                    logits = self.model(ids)[:, -1, :]
+                    logits = super().forward(ids)[:, -1, :]
                     if top_k is not None and top_k > 0:
                         values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                         logits = logits.masked_fill(logits < values[:, [-1]], -float("inf"))

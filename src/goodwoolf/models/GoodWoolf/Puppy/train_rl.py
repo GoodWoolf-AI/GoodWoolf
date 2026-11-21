@@ -105,8 +105,8 @@ class Trainer:
         params = dict(self.model.named_parameters())
         groups = []
 
-        def add(suffixes, lr, betas=(0.9, 0.95), weight_decay=0.0):
-            names = [f"model.{name}" for name in suffixes if f"model.{name}" in params]
+        def add(names, lr, betas=(0.9, 0.95), weight_decay=0.0):
+            names = [name for name in names if name in params]
             if names:
                 groups.append({
                     "params": [params[name] for name in names],
@@ -120,7 +120,7 @@ class Trainer:
         add(["lm_head.weight"], tc.unembedding_lr * scale, weight_decay=tc.weight_decay)
         add(["transformer.wte.weight"], tc.embedding_lr * scale, weight_decay=tc.weight_decay)
         add(
-            [name.removeprefix("model.") for name in params if name.startswith("model.value_embeds.")],
+            [name for name in params if name.startswith("value_embeds.")],
             tc.embedding_lr * scale * 0.5,
             weight_decay=tc.weight_decay,
         )
@@ -130,17 +130,16 @@ class Trainer:
 
         matrix_names = []
         for name in params:
-            if name.startswith("model.") and params[name].ndim >= 2:
+            if params[name].ndim >= 2:
                 if any(part in name for part in ("lm_head", "wte", "value_embeds", "smear_gate")):
                     continue
-                matrix_names.append(name.removeprefix("model."))
+                matrix_names.append(name)
         add(matrix_names, tc.matrix_lr * scale)
 
         scalar_names = [
-            name.removeprefix("model.")
-            for name in params
-            if name.startswith("model.") and params[name].ndim < 2
-            and name.removeprefix("model.") not in {"resid_lambdas", "x0_lambdas", "smear_lambda", "backout_lambda"}
+            name for name in params
+            if params[name].ndim < 2
+            and name not in {"resid_lambdas", "x0_lambdas", "smear_lambda", "backout_lambda"}
         ]
         add(scalar_names, tc.matrix_lr * scale)
 
