@@ -7,12 +7,17 @@ requires-python = ">=3.12"
 dependencies = [
     "click>=8.5.0",
     "datasets>=5.0.0",
+    "huggingface-hub>=0.25.0",
     "numpy>=2.4.6",
+    "rustbpe>=0.1.0",
     "tiktoken>=0.13.0",
     "torch>=2.12.0",
     "tqdm>=4.68.1",
     "transformers>=5.10.2",
 ]
+
+[tool.uv]
+package = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -23,9 +28,11 @@ namespaces = true
 # build dist package with non-python files
 [tool.setuptools.package-data]
 goodwoolf = [
-    "config/**/*.json",
-    "config/**/*.jinja",
-    "config/**/*.yaml",
+    "models/**/config/*.json",
+    "models/**/config/*.jinja",
+    "models/**/config/*.yaml",
+    "models/**/config/*.pkl",
+    "models/**/config/*.pt",
 ]
 
 [project.optional-dependencies]

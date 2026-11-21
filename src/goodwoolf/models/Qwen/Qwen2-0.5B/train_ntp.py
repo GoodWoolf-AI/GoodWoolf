@@ -1,5 +1,5 @@
 """
-Pretrain the default model on Shakespeare.
+Pretrain Qwen model on Shakespeare.
 """
 
 import os
@@ -12,7 +12,7 @@ from contextlib import nullcontext
 import numpy as np
 import torch
 
-from goodwoolf.utils.system import models_path, data_path
+from goodwoolf.utils.system import model_path, data_path
 from goodwoolf.utils.models import load_config, load_model, model_name_from_path
 
 
@@ -189,13 +189,12 @@ class Trainer:
 
 def main(argv=None):
     default_model_name = model_name_from_path(__file__)
-    default_model_path = models_path(default_model_name)
+    default_model_path = model_path(default_model_name)
     default_chpt_path = f"{default_model_path}/chpt.pt"
 
-    parser = argparse.ArgumentParser(description="Pretrain the default model")
-    parser.add_argument("--model-name", default=default_model_name, help=f"Model name (default: {default_model_name})")
+    parser = argparse.ArgumentParser(description="Pretrain Qwen model")
     parser.add_argument("--load-model", default=default_model_path, help="safetensors file with model weights")
-    parser.add_argument("--data-name", default="shakespeare", help="Dataset name (e.g. shakespeare)")
+    parser.add_argument("--data-name", default="Salesforce/wikitext", help="Dataset name (e.g. Salesforce/wikitext)")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
@@ -217,6 +216,7 @@ def main(argv=None):
     parser.add_argument("--compile", action="store_true", default=True)
     parser.add_argument("--dtype", default="bfloat16")
     args = parser.parse_args(argv)
+    args.model_name = default_model_name
 
     configs = load_config(args.model_name)
     Trainer(configs["model"], args).train()

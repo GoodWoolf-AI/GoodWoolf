@@ -1,12 +1,12 @@
 from pathlib import Path
 from transformers import AutoTokenizer
 
-from goodwoolf.utils.models import CONFIG_BASE
+from goodwoolf.utils.models import config_path
 
 
 class Tokenizer:
     def __init__(self, model_name):
-        path = CONFIG_BASE / model_name
+        path = config_path(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(path)
 
     def __getattr__(self, name):

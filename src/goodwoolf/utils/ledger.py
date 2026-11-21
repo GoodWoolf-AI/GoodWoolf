@@ -7,12 +7,14 @@ import uuid
 from pathlib import Path
 
 from goodwoolf.utils.system import (
-    models_path,
+    checkpoint_path,
+    copy_dir,
+    model_path,
     resolve_url,
     hash_files,
-    download_file
+    download_file,
+    rm_dir
 )
-from goodwoolf.utils.models import models_path
 
 
 LEDGER_ENTRY = {
@@ -101,9 +103,9 @@ def create_entry(model_name: str, operator: str):
     user_name = get_hf_username()
 
     # compute model hash
-    model_path = models_path(model_name)
-    model_files = list_model_files(model_path)
-    model_hash = hash_files([f"{model_path}/{f}" for f in model_files])
+    model_dir = model_path(model_name)
+    model_files = list_model_files(model_dir)
+    model_hash = hash_files([f"{model_dir}/{f}" for f in model_files])
 
     entry = LEDGER_ENTRY.copy()
     entry["id"] = model_hash
@@ -143,9 +145,9 @@ def check_entry(model_name):
     print("Ledger path:", ledger_file)
 
     # compute model hash
-    model_path = models_path(model_name)
-    model_files = list_model_files(model_path)
-    model_hash = hash_files([f"{model_path}/{f}" for f in model_files])
+    model_dir = model_path(model_name)
+    model_files = list_model_files(model_dir)
+    model_hash = hash_files([f"{model_dir}/{f}" for f in model_files])
 
     # check if model hash is in the ledger
     with open(ledger_file, "r") as f:
@@ -206,11 +208,27 @@ def pull_model(model_name, id=None):
 
     model_url = entry["url"]
     model_files = entry["weights"]
-    model_path = models_path(model_name)
+    checkpoint_dir = checkpoint_path(model_name, entry["id"])
 
     print("Ledger path:", ledger_file)
     print("Entry id:", entry["id"])
     print("Model URL:", model_url)
+    print("Checkpoint path:", checkpoint_dir)
+
+    if Path(checkpoint_dir).exists():
+        print("Model already downloaded.")
+        return
 
     for file in model_files:
-        download_file(f"{model_url}/{file}", f"{model_path}/{file}", progress=True)
+        download_file(f"{model_url}/{file}", f"{checkpoint_dir}/{file}", progress=True)
+
+
+def model_checkout(model_name, id):
+    """Check out a model checkpoint as the active model."""
+    source_dir = checkpoint_path(model_name, id)
+    if not Path(source_dir).is_dir():
+        raise FileNotFoundError(f"Model checkpoint not pulled: {source_dir}. Run pull first.")
+    target_dir = model_path(model_name)
+    print("Checkout path:", target_dir)
+    rm_dir(target_dir)
+    copy_dir(source_dir, target_dir)

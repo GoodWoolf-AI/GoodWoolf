@@ -43,6 +43,7 @@ Learn more by following the online documenation:
 
 - [Get Started](https://docs.goodwoolf.ai/)
   - [Introduction](https://docs.goodwoolf.ai/introduction)
+  - [Supported Datasets](#supported-datasets)
 - [Features](https://docs.goodwoolf.ai/category/features)
   - [Training Process](https://docs.goodwoolf.ai/features/training-process)
   - [Training Ledger](https://docs.goodwoolf.ai/features/training-ledger)
@@ -119,12 +120,34 @@ Visual represenation of Collaborative Training Workflow
        +-----------------------------+
 ```
 
+## Supported Datasets
+
+You can train GoodWoolf on your own private data. To make things easier, a few
+public datasets are also integrated so you can use them right away.
+
+Datasets live in `src/goodwoolf/data/<vendor>/<dataset>/` and are prepared with
+`goodwoolf dataset <vendor>/<dataset> --fetch --prepare`. The **Training stage** column marks
+the stage each dataset is intended for: `NTP` (base training with next token
+prediction), `SFT` (supervised fine-tuning), or `RL` (reinforcement learning).
+
+| Dataset | Description | Training stage |
+| --- | --- | --- |
+| `nvidia/climbmix` | ClimbMix-400B pretraining corpus (GPT-2 tokenized). | NTP |
+| `karpathy/climbmix-400b-shuffle` | Nanochat-style globally shuffled ClimbMix-400B raw-text corpus. | NTP |
+| `Skylion007/openwebtext` | OpenWebText web-text corpus for pretraining. | NTP |
+| `Salesforce/wikitext` | WikiText-2 language-modeling corpus. | NTP |
+| `allenai/ai2_arc` | AI2 Reasoning Challenge, multiple-choice science questions. | SFT |
+| `openai/humaneval` | HumanEval, Python coding problems with unit tests. | SFT |
+| `cais/mmlu` | MMLU, multiple-choice knowledge across 57 subjects. | SFT |
+| `HuggingFaceTB/smoltalk` | SmolTalk, general conversational data. | SFT |
+| `openai/gsm8k` | GSM8K, grade-school math word problems with worked solutions. | SFT, RL |
+
 ## Usage Examples
 
 ### Prepare training data
 
-```
-goodwoolf prepare <vendor>/<model> <dataset>
+```bash
+goodwoolf dataset <dataset> --fetch --prepare
 ```
 
 ### Download model weights
@@ -136,8 +159,13 @@ goodwoolf pull <vendor>/<model>
 ### Train model
 
 ```bash
-goodwoolf pretrain <vendor>/<model> <dataset>
+goodwoolf train <vendor>/<model> --stage NTP --data-name <dataset>
 ```
+
+`--stage` selects the training stage: `NTP` (base training with next token
+prediction), `SFT` (supervised fine-tuning, full answer prediction), `RL`
+(reinforcement, free thinking with final answer prediction), or `TOK`
+(tokenizer training).
 
 ### Generate text
 

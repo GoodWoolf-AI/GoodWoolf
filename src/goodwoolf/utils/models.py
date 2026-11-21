@@ -10,14 +10,16 @@ from pathlib import Path
 from huggingface_hub import HfApi
 from collections import defaultdict
 
-from goodwoolf.utils.system import copy_dir, models_path
+from goodwoolf.utils.system import checkpoint_path, copy_dir, dataset_path, model_path
 
 HF_API = HfApi()
 BASE_FILTERS = {"filter": "transformers", "pipeline_tag": "text-generation"}
 
-CONFIG_BASE = Path(__file__).parents[1] / "config"
 DATASET_BASE = Path(__file__).parents[1] / "data"
 MODEL_BASE = Path(__file__).parents[1] / "models"
+
+def config_path(model_name):
+    return MODEL_BASE / model_name / "config"
 
 
 def model_name_from_path(path_name):
@@ -77,15 +79,36 @@ def list_models(vendor):
             print(f"{vendor}/{d.name}")
 
 
+def list_all_models():
+    """List all supported models across vendors."""
+    print("Models:")
+    if not MODEL_BASE.exists():
+        return
+    excluded = {"__pycache__"}
+    for vendor in sorted(MODEL_BASE.iterdir()):
+        if not vendor.is_dir() or vendor.name in excluded:
+            continue
+        for model in sorted(vendor.iterdir()):
+            if model.is_dir() and model.name not in excluded:
+                print(f"{vendor.name}/{model.name}")
+
+
 def list_datasets():
-    """List supported datasets (subdirectories in DATASET_BASE)."""
+    """List supported datasets (DATASET_BASE/<vendor>/<dataset>)."""
     print(f"Datasets:")
     if not DATASET_BASE.exists():
         return
     excluded = {"__pycache__"}
-    for d in DATASET_BASE.iterdir():
-        if d.is_dir() and d.name not in excluded:
-            print(d.name)
+    for vendor in sorted(DATASET_BASE.iterdir()):
+        if not vendor.is_dir() or vendor.name in excluded:
+            continue
+        for dataset in sorted(vendor.iterdir()):
+            if (
+                dataset.is_dir()
+                and dataset.name not in excluded
+                and (dataset / "dataset.py").exists()
+            ):
+                print(f"{vendor.name}/{dataset.name}")
 
 
 def list_weights(path):
@@ -107,14 +130,15 @@ def load_config(model_name):
     from transformers import AutoConfig
 
     print(f"Loading config for {model_name}", file=sys.stderr)
-    yaml_path = CONFIG_BASE / model_name / "model.yaml"
+    yaml_path = config_path(model_name) / "model.yaml"
     with open(yaml_path) as f:
         kwargs = yaml.safe_load(f)
     model_type = kwargs.pop("model_type", "llama")
+    train_tok = kwargs.pop("train_tok", {})
     model_config = AutoConfig.for_model(model_type, **kwargs)
 
     tokenizer = load_tokenizer(model_name)
-    return {"model": model_config, "tokenizer": tokenizer}
+    return {"model": model_config, "tokenizer": tokenizer, "train_tok": train_tok}
 
 
 def create_model(model_name, config, template, weights):
@@ -124,7 +148,7 @@ def create_model(model_name, config, template, weights):
         print("Creating pipeline files:", template, "->", model_name)
         copy_dir(MODEL_BASE / template, MODEL_BASE / model_name)
     if weights:
-        save_model(model_name, models_path(model_name))
+        save_model(model_name, model_path(model_name))
 
 
 def save_config(model_name):
@@ -133,7 +157,7 @@ def save_config(model_name):
     print(f"Fetching config for {model_name}", file=sys.stderr)
     model_config = AutoConfig.from_pretrained(model_name)
 
-    path = CONFIG_BASE / model_name
+    path = config_path(model_name)
     path.mkdir(parents=True, exist_ok=True)
     yaml_path = path / "model.yaml"
     with open(yaml_path, "w") as f:
@@ -156,7 +180,7 @@ def load_tokenizer(model_name):
         return mod.Tokenizer(model_name)
 
     from transformers import AutoTokenizer
-    config_path = CONFIG_BASE / model_name
+    config_path = config_path(model_name)
     if config_path.exists() and (config_path / "tokenizer.json").exists():
         print(f"Loading tokenizer from {config_path}", file=sys.stderr)
         return AutoTokenizer.from_pretrained(str(config_path))
@@ -175,7 +199,7 @@ def new_model(model_name):
 
     from transformers import AutoModelForCausalLM
 
-    config_path = CONFIG_BASE / model_name
+    config_path = config_path(model_name)
     if config_path.exists():
         configs = load_config(model_name)
         print(f"Creating model from config", file=sys.stderr)
@@ -271,6 +295,19 @@ def generate(model_name, load_path, prompt, max_tokens):
 
     tokenizer = configs["tokenizer"]
     inputs = tokenizer(prompt, return_tensors="pt")
+    input_ids = inputs["input_ids"]
+    if not isinstance(input_ids, torch.Tensor):
+        input_ids = torch.tensor(input_ids, dtype=torch.long)
+    if input_ids.dim() == 1:
+        input_ids = input_ids.unsqueeze(0)
+    inputs["input_ids"] = input_ids
+    if "attention_mask" in inputs:
+        attention_mask = inputs["attention_mask"]
+        if not isinstance(attention_mask, torch.Tensor):
+            attention_mask = torch.tensor(attention_mask, dtype=torch.long)
+        if attention_mask.dim() == 1:
+            attention_mask = attention_mask.unsqueeze(0)
+        inputs["attention_mask"] = attention_mask
 
     # Ensure input prompt has at least one token
     if inputs["input_ids"].shape[1] == 0:
@@ -356,8 +393,8 @@ def add_weights(model_name: str, base_model_path: str, new_model_path: str):
     return base_model
 
 
-def update(model_name, data_name, base_model, new_model, batch_size, eval_iters, dtype):
-    """Update model with delta weights from new model."""
+def merge(model_name, data_name, id, batch_size, eval_iters, dtype):
+    """Merge a checkpoint into the active model."""
     import os
     import time
     from contextlib import nullcontext
@@ -367,7 +404,7 @@ def update(model_name, data_name, base_model, new_model, batch_size, eval_iters,
 
     from goodwoolf.utils.models import load_config
 
-    data_dir = data_path(model_name, data_name)
+    data_dir = dataset_path(data_name)
     configs = load_config(model_name)
     model_config = configs["model"]
 
@@ -383,8 +420,13 @@ def update(model_name, data_name, base_model, new_model, batch_size, eval_iters,
 
     torch.manual_seed(1337)
     block_size = model_config.max_position_embeddings
+    base_model_path = model_path(model_name)
+    new_model_path = checkpoint_path(model_name, id)
 
-    base_model = load_model(model_name, base_model)
+    print(f"base:    {base_model_path}", file=sys.stderr)
+    print(f"checkpoint: {new_model_path}", file=sys.stderr)
+
+    base_model = load_model(model_name, base_model_path)
     base_model.to(device)
 
     print(f"data:    {data_dir}", file=sys.stderr)
@@ -402,7 +444,7 @@ def update(model_name, data_name, base_model, new_model, batch_size, eval_iters,
     print(f"time:       {dt:.2f}s", file=sys.stderr)
 
     print("--- New Model ---", file=sys.stderr)
-    new_model = load_model(model_name, new_model)
+    new_model = load_model(model_name, new_model_path)
     new_model.to(device)
     t0 = time.time()
     new_losses = estimate_loss(new_model, ctx, device, data_dir, block_size, batch_size, eval_iters, device_type)
@@ -414,10 +456,8 @@ def update(model_name, data_name, base_model, new_model, batch_size, eval_iters,
     assert new_losses["train"] < base_losses["train"], "New model train loss not lower"
     assert new_losses["test"] < base_losses["test"], "New model test loss not lower"
 
-    print("--- Updating Weights ---", file=sys.stderr)
-    updated_model = add_weights(model_name, base_model, new_model)
+    print("--- Merging Weights ---", file=sys.stderr)
+    updated_model = add_weights(model_name, base_model_path, new_model_path)
 
-    output_path = base_model
-    from safetensors.torch import save_file
-    save_file(updated_model.state_dict(), output_path)
-    print(f"Updated model saved to {output_path}", file=sys.stderr)
+    save_safetensors(updated_model.state_dict(), base_model_path)
+    print(f"Merged model saved to {base_model_path}", file=sys.stderr)

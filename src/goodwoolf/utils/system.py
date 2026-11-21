@@ -18,18 +18,41 @@ from tqdm import tqdm
 BUFFER_SIZE = 1024 * 1024  # 1 MB
 
 
-def data_path(model_name, data_name):
+def data_cache_path(data_name=None):
     base = os.environ.get("GOODWOOLF_DATA", str(Path.home()) + "/.goodwoolf/data")
-    if model_name is None or data_name is None:
+    if data_name is None:
         return base
-    return base + "/" + data_name + "/" + model_name
+    return base + "/" + data_name
 
 
-def models_path(model_name=None):
+def model_cache_path(model_name=None):
     base = os.environ.get("GOODWOOLF_MODELS", str(Path.home()) + "/.goodwoolf/models")
     if model_name is None:
         return base
     return base + "/" + model_name
+
+
+def dataset_path(data_name):
+    return data_cache_path(data_name)
+
+
+def tokenizer_path(model_name):
+    return model_cache_path(model_name) + "/tokenizer"
+
+
+def model_path(model_name):
+    return model_cache_path(model_name) + "/head"
+
+
+def checkpoint_path(model_name, checkpoint):
+    return model_cache_path(model_name) + f"/checkpoints/{checkpoint}"
+
+
+def ensure_dir(data_dir):
+    """Create ``data_dir`` if needed and return it as a ``Path``."""
+    path = Path(data_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def copy_dir(src_dir, dst_dir):
@@ -43,6 +66,20 @@ def copy_dir(src_dir, dst_dir):
             shutil.copytree(item, dest, dirs_exist_ok=True)
         else:
             shutil.copy2(item, dest)
+
+
+def rm_dir(dir_path, recursive=True):
+    """Remove a directory, optionally only when empty."""
+    path = Path(dir_path)
+    if not path.exists():
+        return
+    if path.is_dir():
+        if recursive:
+            shutil.rmtree(path)
+        else:
+            path.rmdir()
+    else:
+        path.unlink()
 
 
 def import_file(file_path, package_name):

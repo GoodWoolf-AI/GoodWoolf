@@ -228,4 +228,5 @@ data/shakespeare/input.txt
 input/
 output/
 *.pt
+*.pkl
 *.safetensors
