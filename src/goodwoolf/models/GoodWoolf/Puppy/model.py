@@ -329,32 +329,6 @@ class Model(GPT):
         return super().load_state_dict(normalized, strict=strict, assign=assign)
 
     @torch.inference_mode()
-    def generate(
-        self,
-        input_ids,
-        attention_mask=None,
-        max_new_tokens=50,
-        temperature=1.0,
-        top_k=None,
-        do_sample=True,
-        pad_token_id=None,
-        **kwargs,
-    ):
-        ids = input_ids
-        for _ in range(max_new_tokens):
-            logits = super().forward(ids)[:, -1, :]
-            if top_k is not None and top_k > 0:
-                values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits = logits.masked_fill(logits < values[:, [-1]], -float("inf"))
-            if do_sample and temperature > 0:
-                logits = logits / temperature
-                next_ids = torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
-            else:
-                next_ids = torch.argmax(logits, dim=-1, keepdim=True)
-            ids = torch.cat((ids, next_ids), dim=1)
-        return ids
-
-    @torch.inference_mode()
     def chat(
         self,
         tokenizer,
@@ -418,7 +392,7 @@ class Model(GPT):
         return tokenizer.decode(response_ids, skip_special_tokens=True)
 
     @torch.inference_mode()
-    def generate_sequences(
+    def generate(
         self,
         tokenizer,
         prompt_ids,

@@ -166,7 +166,7 @@ class Trainer:
         for sampling_step in range(num_sampling_steps):
             sample_count = min(tc.device_batch_size, tc.num_samples - sampling_step * tc.device_batch_size)
             seed = (step * 1000003 + example_idx * 9176 + sampling_step) & 0x7FFFFFFF
-            sample_sequences, sample_masks = self.model.generate_sequences(
+            sample_sequences, sample_masks = self.model.generate(
                 self.tokenizer,
                 prompt_ids,
                 num_samples=sample_count,
@@ -200,7 +200,7 @@ class Trainer:
         for example_idx in range(tc.eval_examples):
             tokens, answer = self.val_loader.next_batch()
             seed = (step * 1000003 + example_idx) & 0x7FFFFFFF
-            sequences, _ = self.model.generate_sequences(
+            sequences, _ = self.model.generate(
                 self.tokenizer,
                 tokens,
                 num_samples=k_max,

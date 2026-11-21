@@ -3,6 +3,7 @@
 
 import os
 import sys
+import inspect
 import torch
 import yaml
 
@@ -294,6 +295,21 @@ def generate(model_name, load_path, prompt, max_tokens):
     model.eval()
 
     tokenizer = configs["tokenizer"]
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.to(device)
+
+    if "prompt_ids" in inspect.signature(model.generate).parameters:
+        prompt_ids = tokenizer.render_prompt([{"role": "user", "content": prompt}])
+        sequences, _ = model.generate(
+            tokenizer,
+            prompt_ids,
+            num_samples=1,
+            max_new_tokens=max_tokens,
+            temperature=0.7,
+            top_k=50,
+        )
+        return tokenizer.decode(sequences[0][len(prompt_ids):], skip_special_tokens=True)
+
     inputs = tokenizer(prompt, return_tensors="pt")
     input_ids = inputs["input_ids"]
     if not isinstance(input_ids, torch.Tensor):
@@ -331,9 +347,7 @@ def generate(model_name, load_path, prompt, max_tokens):
     #     "input_ids": tensor[...],
     #     "attention_mask": tensor[...]
     # }
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     inputs = {k: v.to(device) for k, v in inputs.items()}
-    model = model.to(device)
 
     output = model.generate(
         **inputs,
