@@ -1,7 +1,6 @@
 """Supervised fine-tuning for the Puppy model."""
 
 import argparse
-import math
 import os
 import sys
 import time
@@ -36,13 +35,6 @@ class Trainer:
 
         self.max_seq_len = train_config.max_seq_len or model_config.max_position_embeddings
         self.token_bytes = training.load_token_bytes(train_config.model_name, self.device)
-        if train_config.total_batch_size is not None:
-            tokens_per_micro_batch = train_config.batch_size * self.max_seq_len
-            if train_config.total_batch_size % tokens_per_micro_batch:
-                raise ValueError("total batch size must be a multiple of batch_size * max_seq_len")
-            train_config.gradient_accumulation_steps = (
-                train_config.total_batch_size // tokens_per_micro_batch
-            )
 
         train_dataset = load_data(train_config.data_name, split=train_config.train_split)
         val_dataset = load_data(train_config.data_name, split=train_config.val_split)
@@ -57,36 +49,43 @@ class Trainer:
             file=sys.stderr,
         )
 
-        loader_kwargs = dict(
-            tokenizer=tokenizer,
-            batch_size=train_config.batch_size,
-            max_seq_len=self.max_seq_len,
-            device=self.device,
-            device_type=self.device_type,
-            buffer_size=train_config.buffer_size,
-        )
-        self.train_loader = SFTDataLoader(
-            train_dataset,
-            num_iterations=train_config.num_iterations,
-            **loader_kwargs,
-        )
+        self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        self.val_loader_kwargs = loader_kwargs
+        self.total_examples = len(train_dataset) * train_config.num_epochs
+        self.source_kwargs = dict(
+            tokenizer=tokenizer,
+            max_seq_len=self.max_seq_len,
+        )
+        self.train_loader = SFTDataLoader(train_dataset, num_epochs=train_config.num_epochs, **self.source_kwargs)
+        self.train_packer = self.make_packer(self.train_loader)
 
+        ckpt = None
         if os.path.exists(train_config.checkpoint_path):
             print(f"Resuming model from {train_config.checkpoint_path}", file=sys.stderr)
             self.model = load_model(train_config.model_name, train_config.checkpoint_path)
             ckpt = torch.load(train_config.checkpoint_path, map_location="cpu")
-            self.iter_num = ckpt.get("iter_num", 0)
             self.best_val_bpb = ckpt.get("best_val_bpb", ckpt.get("best_val_loss", float("inf")))
         elif os.path.exists(train_config.load_model):
             print(f"Initializing model from {train_config.load_model}", file=sys.stderr)
             self.model = load_model(train_config.model_name, train_config.load_model)
-            self.iter_num = 0
             self.best_val_bpb = float("inf")
         else:
             print("Training requires initial weights (checkpoint or safetensors)", file=sys.stderr)
             sys.exit(1)
+
+        examples_consumed = ckpt.get("examples_consumed", 0) if ckpt is not None else 0
+        update_count = ckpt.get("update_count", ckpt.get("iter_num", 0)) if ckpt is not None else 0
+        self.tracker = training.ExampleUpdateTracker(
+            examples_per_update=train_config.examples_per_update,
+            total_examples=self.total_examples,
+            examples_consumed=examples_consumed,
+            update_count=update_count,
+        )
+        if ckpt is not None and "loader_state" in ckpt and "packer_state" in ckpt:
+            self.train_loader.load_state_dict(ckpt["loader_state"])
+            self.train_packer.load_state_dict(ckpt["packer_state"])
+        elif ckpt is not None:
+            print("Checkpoint has no data stream state; restarting data streams", file=sys.stderr)
 
         self.model.to(self.device)
         if self.device_type == "cuda":
@@ -97,12 +96,22 @@ class Trainer:
             enabled=(train_config.dtype == "float16"),
         )
         self.optimizer = self.configure_optimizers(model_config)
-        resume_ckpt = locals().get("ckpt")
-        if resume_ckpt is not None and "optimizer" in resume_ckpt:
-            self.optimizer.load_state_dict(resume_ckpt["optimizer"])
+        if ckpt is not None and "optimizer" in ckpt:
+            self.optimizer.load_state_dict(ckpt["optimizer"])
 
         n_params = sum(p.numel() for p in self.model.parameters())
         print(f"number of parameters: {n_params / 1e6:.2f}M", file=sys.stderr)
+
+    def make_packer(self, source):
+        return training.BatchPacker(
+            source=source,
+            bos_token_id=self.tokenizer.get_bos_token_id(),
+            batch_size=self.train_config.batch_size,
+            row_capacity=self.max_seq_len + 1,
+            buffer_size=self.train_config.buffer_size,
+            device=self.device,
+            device_type=self.device_type,
+        )
 
     def configure_optimizers(self, model_config):
         n_embd = getattr(model_config, "n_embd", None)
@@ -160,21 +169,25 @@ class Trainer:
 
     def get_lr_multiplier(self, progress):
         tc = self.train_config
-        if progress < tc.warmup_ratio:
+        if tc.warmup_ratio > 0 and progress < tc.warmup_ratio:
             return (progress + 1e-8) / tc.warmup_ratio
         if progress <= 1.0 - tc.warmdown_ratio:
             return 1.0
-        decay = (progress - (1.0 - tc.warmdown_ratio)) / tc.warmdown_ratio
+        denominator = max(tc.warmdown_ratio, 1e-8)
+        decay = min((progress - (1.0 - tc.warmdown_ratio)) / denominator, 1.0)
         return (1 - decay) + decay * tc.final_lr_frac
 
     def evaluate(self):
         self.model.eval()
-        val_loader = SFTDataLoader(self.val_dataset, **self.val_loader_kwargs)
+        val_loader = SFTDataLoader(self.val_dataset, **self.source_kwargs)
+        val_packer = self.make_packer(val_loader)
 
         def batches():
-            while True:
-                inputs, targets, _, _, _ = val_loader.next_batch()
-                yield inputs, targets
+            for _ in range(self.train_config.eval_iters):
+                batch = val_packer.next_batch()
+                if batch is None:
+                    break
+                yield batch[0], batch[1]
 
         metrics = {
             "val/bpb": training.evaluate_bpb(
@@ -188,13 +201,16 @@ class Trainer:
         self.model.train()
         return metrics
 
-    def save_checkpoint(self, last_step=False):
+    def save_checkpoint(self, last_update=False):
         checkpoint = {
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
-            "iter_num": self.iter_num,
+            "update_count": self.tracker.update_count,
+            "examples_consumed": self.tracker.examples_consumed,
             "best_val_bpb": self.best_val_bpb,
-            "last_step": last_step,
+            "last_update": last_update,
+            "loader_state": self.train_loader.state_dict(),
+            "packer_state": self.train_packer.state_dict(),
         }
         parent = os.path.dirname(self.train_config.checkpoint_path)
         if parent:
@@ -207,37 +223,51 @@ class Trainer:
         t0 = time.time()
         self.model.train()
 
-        while True:
-            inputs, targets, progress, last_step, epoch = self.train_loader.next_batch()
+        while not self.tracker.done:
+            group_size = self.tracker.group_size()
+            progress = min(
+                (self.tracker.examples_consumed + group_size) / self.total_examples,
+                1.0,
+            )
             multiplier = self.get_lr_multiplier(progress)
             for group in self.optimizer.param_groups:
                 group["lr"] = group["base_lr"] * multiplier
 
-            loss = None
-            for _ in range(tc.gradient_accumulation_steps):
+            pending_examples = 0
+            micro_batches = 0
+            loss_value = None
+            while pending_examples < group_size:
+                batch = self.train_packer.next_batch(max_examples=group_size - pending_examples)
+                if batch is None:
+                    raise RuntimeError("SFT data stream ended before the update boundary")
+                inputs, targets, items_used, _ = batch
                 with self.ctx:
                     loss = self.model(input_ids=inputs, labels=targets).loss
-                    loss = loss / tc.gradient_accumulation_steps
-                inputs, targets, next_progress, step_last, epoch = self.train_loader.next_batch()
-                progress = next_progress
-                last_step = last_step or step_last
                 self.scaler.scale(loss).backward()
+                pending_examples += items_used
+                self.tracker.consume(items_used)
+                micro_batches += 1
+                loss_value = loss.detach()
+            if pending_examples != group_size:
+                raise RuntimeError("SFT update consumed the wrong number of examples")
 
-            if tc.grad_clip != 0.0:
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), tc.grad_clip)
+            training.finish_gradient_update(
+                self.scaler,
+                self.optimizer,
+                self.model.parameters(),
+                tc.grad_clip,
+                micro_batches,
+            )
+            self.tracker.finish_update()
+            update = self.tracker.update_count
+            epoch = min(self.tracker.examples_consumed // len(self.train_dataset) + 1, tc.num_epochs)
+            finish = self.tracker.done and self.train_packer.done
 
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.optimizer.zero_grad(set_to_none=True)
-            self.iter_num += 1
-
-            finish = last_step or (tc.num_iterations > 0 and self.iter_num >= tc.num_iterations)
-            if finish or (tc.eval_interval > 0 and self.iter_num % tc.eval_interval == 0):
+            if finish or (tc.eval_interval > 0 and update % tc.eval_interval == 0):
                 metrics = self.evaluate()
                 val_bpb = metrics["val/bpb"]
                 print(
-                    f"step {self.iter_num:05d}: val bpb {val_bpb:.4f} | epoch {epoch}",
+                    f"update {update:05d}: val bpb {val_bpb:.4f} | epoch {epoch}",
                     file=sys.stderr,
                 )
                 if val_bpb < self.best_val_bpb:
@@ -245,16 +275,16 @@ class Trainer:
                     self.save_checkpoint(finish)
 
             t1 = time.time()
-            if self.iter_num % tc.log_interval == 0:
+            if update % tc.log_interval == 0:
                 print(
-                    f"iter {self.iter_num}: loss {loss.item() * tc.gradient_accumulation_steps:.4f}, "
+                    f"update {update}: loss {loss_value.item():.4f}, "
                     f"lr scale {multiplier:.4f}, time {(t1 - t0) * 1000:.2f}ms",
                     file=sys.stderr,
                 )
             t0 = t1
 
             if finish:
-                self.save_checkpoint(last_step=True)
+                self.save_checkpoint(last_update=True)
                 break
 
 
@@ -269,11 +299,10 @@ def main(argv=None):
     parser.add_argument("--data-name", default="HuggingFaceTB/smoltalk", help="Conversation dataset")
     parser.add_argument("--train-split", default="train")
     parser.add_argument("--val-split", default="test")
-    parser.add_argument("--num-iterations", type=int, default=-1)
+    parser.add_argument("--num-epochs", type=int, default=1)
+    parser.add_argument("--examples-per-update", type=int, default=64)
     parser.add_argument("--max-seq-len", type=int, default=None)
     parser.add_argument("--batch-size", "--device-batch-size", dest="batch_size", type=int, default=8)
-    parser.add_argument("--total-batch-size", type=int, default=None)
-    parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
     parser.add_argument("--buffer-size", type=int, default=100)
     parser.add_argument("--embedding-lr", type=float, default=0.3)
     parser.add_argument("--unembedding-lr", type=float, default=0.004)
@@ -291,6 +320,14 @@ def main(argv=None):
     parser.add_argument("--dtype", default="bfloat16")
     args = parser.parse_args(argv)
     args.model_name = default_model_name
+    if args.num_epochs <= 0:
+        parser.error("--num-epochs must be positive")
+    if args.examples_per_update <= 0:
+        parser.error("--examples-per-update must be positive")
+    if args.batch_size <= 0:
+        parser.error("--batch-size must be positive")
+    if args.buffer_size <= 0:
+        parser.error("--buffer-size must be positive")
     if args.eval_iters is None:
         args.eval_iters = max(1, args.eval_tokens // (args.batch_size * (args.max_seq_len or 2048)))
 

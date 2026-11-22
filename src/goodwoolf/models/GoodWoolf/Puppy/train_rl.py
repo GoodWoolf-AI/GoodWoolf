@@ -58,40 +58,54 @@ class Trainer:
                 f"Dataset {train_config.data_name} is missing "
                 f"{train_config.train_split}/{train_config.val_split} records"
             )
-        self.num_steps = (self.num_train_records // train_config.examples_per_step) * train_config.num_epochs
-        if self.num_steps < 1:
-            raise ValueError("Training horizon is zero; increase --num-epochs or reduce --examples-per-step")
-        print(
-            f"{train_config.data_name} RL: {self.num_train_records:,} train records, "
-            f"{self.num_steps:,} steps",
-            file=sys.stderr,
-        )
+        self.total_examples = self.num_train_records * train_config.num_epochs
 
+        ckpt = None
         if os.path.exists(train_config.checkpoint_path):
             print(f"Resuming model from {train_config.checkpoint_path}", file=sys.stderr)
             self.model = load_model(train_config.model_name, train_config.checkpoint_path)
             ckpt = torch.load(train_config.checkpoint_path, map_location="cpu")
-            self.step = ckpt.get("step", 0)
         elif os.path.exists(train_config.load_model):
             print(f"Initializing model from {train_config.load_model}", file=sys.stderr)
             self.model = load_model(train_config.model_name, train_config.load_model)
-            self.step = 0
-            ckpt = None
         else:
             print("Training requires initial weights (checkpoint or safetensors)", file=sys.stderr)
             sys.exit(1)
+
+        examples_consumed = 0
+        update_count = 0
+        self.example_idx = 0
+        if ckpt is not None:
+            examples_consumed = ckpt.get("examples_consumed", ckpt.get("step", 0) * train_config.examples_per_update)
+            examples_consumed = min(examples_consumed, self.total_examples)
+            update_count = ckpt.get("update_count", ckpt.get("step", 0))
+            self.example_idx = ckpt.get("example_idx", 0)
+            if "loader_state" in ckpt:
+                self.train_loader.load_state_dict(ckpt["loader_state"])
+            else:
+                print("Checkpoint has no data stream state; restarting data stream", file=sys.stderr)
+
+        self.tracker = training.ExampleUpdateTracker(
+            examples_per_update=train_config.examples_per_update,
+            total_examples=self.total_examples,
+            examples_consumed=examples_consumed,
+            update_count=update_count,
+        )
+        print(
+            f"{train_config.data_name} RL: {self.num_train_records:,} train records, "
+            f"{self.total_examples:,} examples, {self.tracker.total_updates:,} updates",
+            file=sys.stderr,
+        )
 
         self.model.to(self.device)
         if self.device_type == "cuda":
             self.model.to(dtype=compute_dtype)
 
-        self.example_idx = 0
         self.pad_token_id = tokenizer.encode_special("<|assistant_end|>")
-
         self.optimizer = self.configure_optimizers(model_config)
         if ckpt is not None and "optimizer" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer"])
-        self.apply_lr(0)
+        self.apply_lr(self.tracker.progress)
 
         n_params = sum(p.numel() for p in self.model.parameters())
         print(f"number of parameters: {n_params / 1e6:.2f}M", file=sys.stderr)
@@ -148,13 +162,13 @@ class Trainer:
             group["initial_lr"] = group["lr"]
         return torch.optim.AdamW(groups, fused=self.device_type == "cuda")
 
-    def apply_lr(self, step):
-        multiplier = max(0.0, 1.0 - step / self.num_steps)
+    def apply_lr(self, progress):
+        multiplier = max(0.0, 1.0 - progress)
         for group in self.optimizer.param_groups:
             group["lr"] = group["initial_lr"] * multiplier
         return multiplier
 
-    def sample_rollout(self, step):
+    def sample_rollout(self, update):
         tc = self.train_config
         prompt_ids, answer = self.train_loader.next_batch()
         example_idx = self.example_idx
@@ -165,7 +179,7 @@ class Trainer:
         num_sampling_steps = (tc.num_samples + tc.device_batch_size - 1) // tc.device_batch_size
         for sampling_step in range(num_sampling_steps):
             sample_count = min(tc.device_batch_size, tc.num_samples - sampling_step * tc.device_batch_size)
-            seed = (step * 1000003 + example_idx * 9176 + sampling_step) & 0x7FFFFFFF
+            seed = (update * 1000003 + example_idx * 9176 + sampling_step) & 0x7FFFFFFF
             sample_sequences, sample_masks = self.model.generate(
                 self.tokenizer,
                 prompt_ids,
@@ -190,7 +204,7 @@ class Trainer:
         return inputs, targets, reward_tensor, sequences
 
     @torch.no_grad()
-    def evaluate(self, step):
+    def evaluate(self, update):
         tc = self.train_config
         self.model.eval()
         k_max = min(tc.device_batch_size, tc.num_samples)
@@ -199,7 +213,7 @@ class Trainer:
 
         for example_idx in range(tc.eval_examples):
             tokens, answer = self.val_loader.next_batch()
-            seed = (step * 1000003 + example_idx) & 0x7FFFFFFF
+            seed = (update * 1000003 + example_idx) & 0x7FFFFFFF
             sequences, _ = self.model.generate(
                 self.tokenizer,
                 tokens,
@@ -224,16 +238,19 @@ class Trainer:
             return
         passk = [value / num_examples for value in passk]
         print(
-            f"step {step}: " + ", ".join(f"pass@{k}: {value:.4f}" for k, value in enumerate(passk, 1)),
+            f"update {update}: " + ", ".join(f"pass@{k}: {value:.4f}" for k, value in enumerate(passk, 1)),
             file=sys.stderr,
         )
 
-    def save_checkpoint(self, step):
+    def save_checkpoint(self, last_update=False):
         checkpoint = {
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
-            "step": step,
-            "num_steps": self.num_steps,
+            "update_count": self.tracker.update_count,
+            "examples_consumed": self.tracker.examples_consumed,
+            "example_idx": self.example_idx,
+            "last_update": last_update,
+            "loader_state": self.train_loader.state_dict(),
         }
         parent = os.path.dirname(self.train_config.checkpoint_path)
         if parent:
@@ -245,13 +262,16 @@ class Trainer:
         tc = self.train_config
         t0 = time.time()
 
-        for step in range(self.step, self.num_steps):
-            if tc.eval_every > 0 and step % tc.eval_every == 0:
-                self.evaluate(step)
+        while not self.tracker.done:
+            update = self.tracker.update_count
+            group_size = self.tracker.group_size()
+            multiplier = self.apply_lr(self.tracker.progress)
+            if tc.eval_every > 0 and update % tc.eval_every == 0:
+                self.evaluate(update)
 
             rewards_list, sequence_lengths = [], []
-            for example_step in range(tc.examples_per_step):
-                inputs_all, targets_all, rewards_all, sequences = self.sample_rollout(step)
+            for _ in range(group_size):
+                inputs_all, targets_all, rewards_all, sequences = self.sample_rollout(update)
                 self.model.train()
                 num_passes = (inputs_all.size(0) + tc.device_batch_size - 1) // tc.device_batch_size
                 for pass_idx in range(num_passes):
@@ -266,29 +286,30 @@ class Trainer:
                             labels=targets,
                             loss_reduction="none",
                         ).loss.view_as(inputs)
-                    loss = rl_loss(logp, targets, rewards, num_passes * tc.examples_per_step)
+                    loss = rl_loss(logp, targets, rewards, num_passes * group_size)
                     loss.backward()
                 rewards_list.append(rewards_all.mean().item())
                 sequence_lengths.extend(len(sequence) for sequence in sequences)
+                self.tracker.consume(1)
+
+            self.optimizer.step()
+            self.optimizer.zero_grad(set_to_none=True)
+            self.tracker.finish_update()
+            update = self.tracker.update_count
 
             mean_reward = sum(rewards_list) / len(rewards_list)
             mean_length = sum(sequence_lengths) / len(sequence_lengths)
-            multiplier = self.apply_lr(step)
-            self.optimizer.step()
-            self.optimizer.zero_grad(set_to_none=True)
-            self.step = step + 1
-
-            if step % tc.log_interval == 0:
+            if update % tc.log_interval == 0:
                 print(
-                    f"step {step}/{self.num_steps}: reward {mean_reward:.4f}, "
+                    f"update {update}/{self.tracker.total_updates}: reward {mean_reward:.4f}, "
                     f"length {mean_length:.2f}, lr scale {multiplier:.4f}, "
                     f"time {(time.time() - t0) * 1000:.2f}ms",
                     file=sys.stderr,
                 )
             t0 = time.time()
 
-            if tc.save_every > 0 and ((step > 0 and step % tc.save_every == 0) or step == self.num_steps - 1):
-                self.save_checkpoint(self.step)
+            if tc.save_every > 0 and ((update > 0 and update % tc.save_every == 0) or self.tracker.done):
+                self.save_checkpoint(last_update=self.tracker.done)
 
 
 def main(argv=None):
@@ -307,8 +328,8 @@ def main(argv=None):
     parser.add_argument("--train-split", default="train")
     parser.add_argument("--val-split", default="test")
     parser.add_argument("--num-epochs", type=int, default=1)
+    parser.add_argument("--examples-per-update", type=int, default=16)
     parser.add_argument("--batch-size", "--device-batch-size", dest="device_batch_size", type=int, default=8)
-    parser.add_argument("--examples-per-step", type=int, default=16)
     parser.add_argument("--num-samples", type=int, default=16)
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=1.0)
@@ -326,6 +347,16 @@ def main(argv=None):
     parser.add_argument("--dtype", default="bfloat16")
     args = parser.parse_args(argv)
     args.model_name = default_model_name
+    if args.num_epochs <= 0:
+        parser.error("--num-epochs must be positive")
+    if args.examples_per_update <= 0:
+        parser.error("--examples-per-update must be positive")
+    if args.device_batch_size <= 0:
+        parser.error("--batch-size must be positive")
+    if args.num_samples <= 0:
+        parser.error("--num-samples must be positive")
+    if args.eval_examples <= 0:
+        parser.error("--eval-examples must be positive")
 
     configs = load_config(args.model_name)
     Trainer(configs["model"], configs["tokenizer"], args).train()

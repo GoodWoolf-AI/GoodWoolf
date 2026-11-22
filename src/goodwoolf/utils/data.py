@@ -15,18 +15,15 @@ from goodwoolf.utils.models import DATASET_BASE
 from goodwoolf.utils.system import ensure_dir, import_file
 
 
-def _dataset_module(data_name):
+def load_data(data_name, split=None):
+    """Return the dataset exposed by ``data/<vendor>/<dataset>/dataset.py``."""
     module_path = DATASET_BASE / data_name / "dataset.py"
     if not module_path.exists():
         raise FileNotFoundError(f"Dataset module not found at {module_path}")
 
     module_name = f"goodwoolf.data.{data_name.replace('/', '.')}.dataset"
-    return sys.modules.get(module_name) or import_file(str(module_path), module_name)
-
-
-def load_data(data_name, split=None):
-    """Return the dataset exposed by ``data/<vendor>/<dataset>/dataset.py``."""
-    return _dataset_module(data_name).load_data(split)
+    module = sys.modules.get(module_name) or import_file(str(module_path), module_name)
+    return module.load_data(split)
 
 
 def split_files(data_dir, splits, split=None):
@@ -294,7 +291,7 @@ class JsonDataset:
 
 
 class NTPDataLoader:
-    """Infinite BOS-aligned best-fit batches from an iterable text dataset."""
+    """BOS-aligned best-fit batches from an iterable text dataset."""
 
     def __init__(
         self,
@@ -306,7 +303,10 @@ class NTPDataLoader:
         device_type,
         buffer_size=1000,
         tokenizer_batch_size=128,
+        num_epochs=None,
     ):
+        if num_epochs is not None and num_epochs <= 0:
+            raise ValueError("num_epochs must be positive")
         self.dataset = dataset
         self.tokenizer = tokenizer
         self.batch_size = batch_size
@@ -315,9 +315,14 @@ class NTPDataLoader:
         self.device_type = device_type
         self.buffer_size = buffer_size
         self.tokenizer_batch_size = tokenizer_batch_size
+        self.num_epochs = num_epochs
         self.bos_token_id = self._bos_token_id()
+        self.epoch = 0
+        self.record_index = 0
+        self.iterator = iter(dataset)
+        self.epoch_finished = False
+        self.exhausted = False
         self.doc_buffer = []
-        self.doc_batches = self._document_batches()
 
     def _bos_token_id(self):
         for attribute in ("bos_token_id", "eos_token_id"):
@@ -326,157 +331,231 @@ class NTPDataLoader:
                 return token_id
         return 0
 
-    def _document_batches(self):
-        while True:
-            empty = True
-            batch = []
-            for text in self.dataset:
-                empty = False
-                batch.append(text)
-                if len(batch) == self.tokenizer_batch_size:
-                    yield batch
-                    batch = []
-            if batch:
-                yield batch
-            if empty:
-                raise ValueError("Dataset contains no documents")
+    @property
+    def done(self):
+        return self.exhausted and not self.doc_buffer
 
-    def _refill_buffer(self):
-        texts = next(self.doc_batches)
-        encoded = self.tokenizer(texts, add_special_tokens=False)["input_ids"]
-        for ids in encoded:
-            self.doc_buffer.append([self.bos_token_id] + list(ids))
+    def _next_text_from_epoch(self):
+        try:
+            text = next(self.iterator)
+        except StopIteration:
+            self.epoch_finished = True
+            return None
+        self.record_index += 1
+        return text
 
-    def next_batch(self):
-        rows = torch.empty((self.batch_size, self.row_capacity), dtype=torch.long)
+    def _advance_epoch(self):
+        if self.num_epochs is None:
+            self.epoch += 1
+        elif self.epoch + 1 >= self.num_epochs:
+            self.exhausted = True
+            return
+        else:
+            self.epoch += 1
+        self.record_index = 0
+        self.iterator = iter(self.dataset)
+        self.epoch_finished = False
+
+    def _next_texts(self):
+        texts = []
+        while len(texts) < self.tokenizer_batch_size:
+            text = self._next_text_from_epoch()
+            if text is None:
+                if not texts and self.record_index == 0 and not self.exhausted:
+                    raise ValueError("Dataset contains no documents")
+                if self.epoch_finished:
+                    self._advance_epoch()
+                if texts:
+                    break
+                if self.exhausted:
+                    return None
+                continue
+            texts.append(text)
+        return texts if texts else None
+
+    def _ensure_docs(self):
+        while len(self.doc_buffer) < self.buffer_size:
+            texts = self._next_texts()
+            if texts is None:
+                return bool(self.doc_buffer)
+            encoded = self.tokenizer(texts, add_special_tokens=False)["input_ids"]
+            for ids in encoded:
+                self.doc_buffer.append([self.bos_token_id] + list(ids))
+        return True
+
+    def _build_batch(self, max_examples=None, mask_padding=False):
+        if max_examples is not None and max_examples <= 0:
+            raise ValueError("max_examples must be positive")
+        rows, row_lengths = [], []
+        docs_used = 0
 
         for row_idx in range(self.batch_size):
+            row, content_len = [], None
             pos = 0
             while pos < self.row_capacity:
-                while len(self.doc_buffer) < self.buffer_size:
-                    self._refill_buffer()
-
+                if max_examples is not None and docs_used >= max_examples:
+                    content_len = pos
+                    break
+                if not self._ensure_docs():
+                    content_len = pos
+                    break
+                if not self.doc_buffer:
+                    content_len = pos
+                    break
                 remaining = self.row_capacity - pos
                 best_idx = -1
                 best_len = 0
-                for i, doc in enumerate(self.doc_buffer):
-                    doc_len = len(doc)
-                    if doc_len <= remaining and doc_len > best_len:
-                        best_idx = i
-                        best_len = doc_len
-
+                for idx, doc in enumerate(self.doc_buffer):
+                    if len(doc) <= remaining and len(doc) > best_len:
+                        best_idx = idx
+                        best_len = len(doc)
                 if best_idx >= 0:
                     doc = self.doc_buffer.pop(best_idx)
-                    rows[row_idx, pos:pos + len(doc)] = torch.tensor(doc, dtype=torch.long)
-                    pos += len(doc)
-                else:
-                    shortest_idx = min(range(len(self.doc_buffer)), key=lambda i: len(self.doc_buffer[i]))
-                    doc = self.doc_buffer.pop(shortest_idx)
-                    rows[row_idx, pos:pos + remaining] = torch.tensor(doc[:remaining], dtype=torch.long)
-                    pos += remaining
+                    take = min(len(doc), remaining)
+                    row.extend(doc[:take])
+                    pos += take
+                    docs_used += 1
+                    continue
+                shortest_idx = min(range(len(self.doc_buffer)), key=lambda i: len(self.doc_buffer[i]))
+                doc = self.doc_buffer.pop(shortest_idx)
+                take = min(len(doc), remaining)
+                row.extend(doc[:take])
+                pos += take
+                docs_used += 1
+                content_len = self.row_capacity
+                break
+            if pos < self.row_capacity:
+                row.extend([self.bos_token_id] * (self.row_capacity - pos))
+                if content_len is None:
+                    content_len = pos
+            row_lengths.append(self.row_capacity if content_len is None or content_len < 0 else content_len)
+            rows.append(row[:self.row_capacity])
 
-        inputs = rows[:, :-1]
-        targets = rows[:, 1:]
+        if docs_used == 0:
+            return None
+        rows_tensor = torch.tensor(rows, dtype=torch.long)
+        inputs = rows_tensor[:, :-1]
+        targets = rows_tensor[:, 1:]
+        if mask_padding:
+            targets = targets.clone()
+            for row_idx, content_len in enumerate(row_lengths):
+                if content_len < self.row_capacity:
+                    targets[row_idx, max(0, content_len - 1):] = -1
         if self.device_type == "cuda":
             inputs = inputs.pin_memory().to(self.device, non_blocking=True)
             targets = targets.pin_memory().to(self.device, non_blocking=True)
         else:
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
-        return inputs, targets
+        return inputs, targets, docs_used, self.done
+
+    def next_batch(self):
+        batch = self._build_batch()
+        if batch is None:
+            raise ValueError("Dataset contains no documents")
+        return batch[0], batch[1]
+
+    def next_update_batch(self, max_examples=None):
+        return self._build_batch(max_examples=max_examples, mask_padding=True)
+
+    def state_dict(self):
+        return {
+            "num_epochs": self.num_epochs,
+            "epoch": self.epoch,
+            "record_index": self.record_index,
+            "epoch_finished": self.epoch_finished,
+            "exhausted": self.exhausted,
+            "doc_buffer": [list(doc) for doc in self.doc_buffer],
+        }
+
+    def load_state_dict(self, state):
+        self.num_epochs = state.get("num_epochs", self.num_epochs)
+        self.epoch = state.get("epoch", 0)
+        self.record_index = state.get("record_index", 0)
+        self.epoch_finished = state.get("epoch_finished", False)
+        self.exhausted = state.get("exhausted", False)
+        self.doc_buffer = [list(doc) for doc in state.get("doc_buffer", [])]
+        self.iterator = iter(self.dataset)
+        for _ in range(self.record_index):
+            try:
+                next(self.iterator)
+            except StopIteration:
+                break
 
 
 class SFTDataLoader:
-    """Infinite BOS-aligned best-fit batches from an iterable conversation dataset."""
+    """Finite or infinite stream of tokenized conversation samples."""
 
     def __init__(
         self,
         dataset,
         tokenizer,
-        batch_size,
         max_seq_len,
-        device,
-        device_type,
-        num_iterations=-1,
-        buffer_size=100,
+        num_epochs=None,
     ):
+        if num_epochs is not None and num_epochs <= 0:
+            raise ValueError("num_epochs must be positive")
         self.dataset = dataset
         self.dataset_size = len(dataset)
-        self.iterator = iter(dataset)
+        if self.dataset_size == 0:
+            raise ValueError("Dataset contains no records")
         self.tokenizer = tokenizer
-        self.batch_size = batch_size
         self.max_seq_len = max_seq_len
-        self.row_capacity = max_seq_len + 1
-        self.device = device
-        self.device_type = device_type
-        self.num_iterations = num_iterations
-        self.buffer_size = buffer_size
-        self.bos_token_id = tokenizer.get_bos_token_id()
-        self.buffer = []
-        self.consumed = 0
-        self.epoch = 1
-        self.iteration = 0
+        self.num_epochs = num_epochs
+        self.epoch = 0
+        self.record_index = 0
+        self.iterator = iter(dataset)
+        self._finished = False
+
+    @property
+    def done(self):
+        return self._finished
 
     def _next_record(self):
-        try:
-            return next(self.iterator)
-        except StopIteration:
-            self.epoch += 1
-            self.iterator = iter(self.dataset)
-            return next(self.iterator)
+        while True:
+            try:
+                return next(self.iterator)
+            except StopIteration:
+                if self.num_epochs is None:
+                    self.epoch += 1
+                    self.record_index = 0
+                    self.iterator = iter(self.dataset)
+                    continue
+                if self.epoch + 1 >= self.num_epochs:
+                    self._finished = True
+                    return None
+                self.epoch += 1
+                self.record_index = 0
+                self.iterator = iter(self.dataset)
 
-    def _refill_buffer(self):
-        while len(self.buffer) < self.buffer_size:
-            record = self._next_record()
-            ids, mask = self.tokenizer.render_conversation(record, max_tokens=self.max_seq_len)
-            self.buffer.append((ids, mask))
+    def next_sample(self):
+        if self.done:
+            return None
+        record = self._next_record()
+        if record is None:
+            return None
+        self.record_index += 1
+        return self.tokenizer.render_conversation(record, max_tokens=self.max_seq_len)
 
-    def next_batch(self):
-        rows, mask_rows, row_lengths = [], [], []
-        for _ in range(self.batch_size):
-            row, mask_row = [], []
-            content_len = 0
-            while len(row) < self.row_capacity:
-                while len(self.buffer) < self.buffer_size:
-                    self._refill_buffer()
-                remaining = self.row_capacity - len(row)
-                best_idx = -1
-                best_len = 0
-                for idx, (ids, _) in enumerate(self.buffer):
-                    if len(ids) <= remaining and len(ids) > best_len:
-                        best_idx = idx
-                        best_len = len(ids)
-                if best_idx < 0:
-                    content_len = len(row)
-                    row.extend([self.bos_token_id] * remaining)
-                    mask_row.extend([0] * remaining)
-                    break
-                ids, mask = self.buffer.pop(best_idx)
-                row.extend(ids)
-                mask_row.extend(mask)
-                self.consumed += 1
-            row_lengths.append(content_len or self.row_capacity)
-            rows.append(row[:self.row_capacity])
-            mask_rows.append(mask_row[:self.row_capacity])
+    def state_dict(self):
+        return {
+            "num_epochs": self.num_epochs,
+            "epoch": self.epoch,
+            "record_index": self.record_index,
+            "finished": self._finished,
+        }
 
-        self.iteration += 1
-        last_step = self.consumed >= self.dataset_size
-        if self.num_iterations > 0:
-            progress = self.iteration / self.num_iterations
-        else:
-            progress = self.consumed / self.dataset_size
-        progress = min(progress, 1.0)
-
-        use_cuda = self.device_type == "cuda"
-        batch_tensor = torch.tensor(rows, dtype=torch.long, pin_memory=use_cuda)
-        inputs = batch_tensor[:, :-1].to(self.device, non_blocking=use_cuda).clone()
-        targets = batch_tensor[:, 1:].to(self.device, non_blocking=use_cuda).clone()
-        mask_tensor = torch.tensor(mask_rows, dtype=torch.bool)
-        targets[~mask_tensor[:, 1:].to(self.device)] = -1
-        for row_idx, content_len in enumerate(row_lengths):
-            if content_len < self.row_capacity:
-                targets[row_idx, max(0, content_len - 1):] = -1
-        return inputs, targets, progress, last_step, self.epoch
+    def load_state_dict(self, state):
+        self.num_epochs = state.get("num_epochs", self.num_epochs)
+        self.epoch = state.get("epoch", 0)
+        self.record_index = state.get("record_index", 0)
+        self._finished = state.get("finished", False)
+        self.iterator = iter(self.dataset)
+        for _ in range(self.record_index):
+            try:
+                next(self.iterator)
+            except StopIteration:
+                break
 
 
 class RLDataLoader:
@@ -484,21 +563,46 @@ class RLDataLoader:
 
     def __init__(self, dataset, tokenizer):
         self.dataset = dataset
-        self.iterator = self._cycle_dataset(dataset)
         self.tokenizer = tokenizer
+        self.epoch = 0
+        self.record_index = 0
+        self.iterator = iter(dataset)
 
-    @staticmethod
-    def _cycle_dataset(dataset):
+    def _next_record(self):
         while True:
-            yield from dataset
+            try:
+                record = next(self.iterator)
+            except StopIteration:
+                self.epoch += 1
+                self.record_index = 0
+                self.iterator = iter(self.dataset)
+                continue
+            self.record_index += 1
+            return record
 
     def next_batch(self):
-        conversation = next(self.iterator)
+        conversation = self._next_record()
         messages = list(conversation["messages"])
         if messages and messages[-1]["role"] == "assistant":
             messages.pop()
         prompt_ids = self.tokenizer.render_prompt(messages)
         answer = conversation["answer"]
         return prompt_ids, answer
+
+    def state_dict(self):
+        return {
+            "epoch": self.epoch,
+            "record_index": self.record_index,
+        }
+
+    def load_state_dict(self, state):
+        self.epoch = state.get("epoch", 0)
+        self.record_index = state.get("record_index", 0)
+        self.iterator = iter(self.dataset)
+        for _ in range(self.record_index):
+            try:
+                next(self.iterator)
+            except StopIteration:
+                break
 
 
