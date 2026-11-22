@@ -552,32 +552,49 @@ class NTPDataLoader:
 
 
 class SFTDataLoader:
-    """Finite or infinite stream of tokenized conversation samples."""
+    """Finite or infinite stream of packed SFT batches."""
 
     def __init__(
         self,
         dataset,
         tokenizer,
         max_seq_len,
+        batch_size,
+        buffer_size,
+        device,
+        device_type,
         num_epochs=None,
     ):
         if num_epochs is not None and num_epochs <= 0:
             raise ValueError("num_epochs must be positive")
+        if max_seq_len <= 0:
+            raise ValueError("max_seq_len must be positive")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if buffer_size <= 0:
+            raise ValueError("buffer_size must be positive")
         self.dataset = dataset
         self.dataset_size = len(dataset)
         if self.dataset_size == 0:
             raise ValueError("Dataset contains no records")
         self.tokenizer = tokenizer
-        self.max_seq_len = max_seq_len
+        self.max_seq_len = int(max_seq_len)
+        self.row_capacity = self.max_seq_len + 1
+        self.batch_size = int(batch_size)
+        self.buffer_size = int(buffer_size)
+        self.device = device
+        self.device_type = device_type
+        self.bos_token_id = get_bos_token_id(tokenizer)
         self.num_epochs = num_epochs
         self.epoch = 0
         self.record_index = 0
         self.iterator = iter(dataset)
         self._finished = False
+        self.buffer = []
 
     @property
     def done(self):
-        return self._finished
+        return self._finished and not self.buffer
 
     def _next_record(self):
         while True:
@@ -596,8 +613,8 @@ class SFTDataLoader:
                 self.record_index = 0
                 self.iterator = iter(self.dataset)
 
-    def next_sample(self):
-        if self.done:
+    def _next_sample(self):
+        if self._finished:
             return None
         record = self._next_record()
         if record is None:
@@ -605,12 +622,86 @@ class SFTDataLoader:
         self.record_index += 1
         return render_conversation(self.tokenizer, record, max_tokens=self.max_seq_len)
 
+    def _ensure_buffer(self):
+        while len(self.buffer) < self.buffer_size and not self._finished:
+            sample = self._next_sample()
+            if sample is None:
+                break
+            ids, mask = sample
+            if ids:
+                self.buffer.append((ids, mask))
+
+    def next_batch(self, max_examples=None):
+        if max_examples is not None and max_examples <= 0:
+            raise ValueError("max_examples must be positive")
+        rows, mask_rows, row_lengths = [], [], []
+        items_used = 0
+
+        for _ in range(self.batch_size):
+            row, mask_row, content_len = [], [], None
+            pos = 0
+            while pos < self.row_capacity:
+                if max_examples is not None and items_used >= max_examples:
+                    content_len = pos
+                    break
+                self._ensure_buffer()
+                if not self.buffer:
+                    content_len = pos
+                    break
+                remaining = self.row_capacity - pos
+                best_idx = -1
+                best_len = 0
+                for idx, (ids, _) in enumerate(self.buffer):
+                    if len(ids) <= remaining and len(ids) > best_len:
+                        best_idx = idx
+                        best_len = len(ids)
+                if best_idx >= 0:
+                    ids, mask = self.buffer.pop(best_idx)
+                    take = min(len(ids), remaining)
+                    row.extend(ids[:take])
+                    mask_row.extend(mask[:take])
+                    pos += take
+                    items_used += 1
+                    continue
+                shortest_idx = min(range(len(self.buffer)), key=lambda i: len(self.buffer[i][0]))
+                ids, mask = self.buffer.pop(shortest_idx)
+                take = min(len(ids), remaining)
+                row.extend(ids[:take])
+                mask_row.extend(mask[:take])
+                pos += take
+                items_used += 1
+                content_len = self.row_capacity
+                break
+            if pos < self.row_capacity:
+                pad = self.row_capacity - pos
+                row.extend([self.bos_token_id] * pad)
+                mask_row.extend([0] * pad)
+                if content_len is None:
+                    content_len = pos
+            row_lengths.append(self.row_capacity if content_len is None or content_len < 0 else content_len)
+            rows.append(row[:self.row_capacity])
+            mask_rows.append(mask_row[:self.row_capacity])
+
+        if items_used == 0:
+            return None
+        use_cuda = self.device_type == "cuda"
+        batch_tensor = torch.tensor(rows, dtype=torch.long, pin_memory=use_cuda)
+        inputs = batch_tensor[:, :-1].to(self.device, non_blocking=use_cuda)
+        targets = batch_tensor[:, 1:].to(self.device, non_blocking=use_cuda).clone()
+        mask_tensor = torch.tensor(mask_rows, dtype=torch.bool, device=self.device)
+        targets[~mask_tensor[:, 1:]] = -1
+        for row_idx, content_len in enumerate(row_lengths):
+            if content_len < self.row_capacity:
+                targets[row_idx, max(0, content_len - 1):] = -1
+        return inputs, targets, items_used, self.done
+
     def state_dict(self):
         return {
             "num_epochs": self.num_epochs,
             "epoch": self.epoch,
             "record_index": self.record_index,
             "finished": self._finished,
+            "buffer": [(list(ids), list(mask)) for ids, mask in self.buffer],
         }
 
     def load_state_dict(self, state):
@@ -618,6 +709,7 @@ class SFTDataLoader:
         self.epoch = state.get("epoch", 0)
         self.record_index = state.get("record_index", 0)
         self._finished = state.get("finished", False)
+        self.buffer = [(list(ids), list(mask)) for ids, mask in state.get("buffer", [])]
         self.iterator = iter(self.dataset)
         for _ in range(self.record_index):
             try:

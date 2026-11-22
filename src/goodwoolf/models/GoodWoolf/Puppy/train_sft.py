@@ -55,9 +55,12 @@ class Trainer:
         self.source_kwargs = dict(
             tokenizer=tokenizer,
             max_seq_len=self.max_seq_len,
+            batch_size=train_config.batch_size,
+            buffer_size=train_config.buffer_size,
+            device=self.device,
+            device_type=self.device_type,
         )
         self.train_loader = SFTDataLoader(train_dataset, num_epochs=train_config.num_epochs, **self.source_kwargs)
-        self.train_packer = self.make_packer(self.train_loader)
 
         ckpt = None
         if os.path.exists(train_config.checkpoint_path):
@@ -81,9 +84,8 @@ class Trainer:
             examples_consumed=examples_consumed,
             update_count=update_count,
         )
-        if ckpt is not None and "loader_state" in ckpt and "packer_state" in ckpt:
+        if ckpt is not None and "loader_state" in ckpt:
             self.train_loader.load_state_dict(ckpt["loader_state"])
-            self.train_packer.load_state_dict(ckpt["packer_state"])
         elif ckpt is not None:
             print("Checkpoint has no data stream state; restarting data streams", file=sys.stderr)
 
@@ -101,17 +103,6 @@ class Trainer:
 
         n_params = sum(p.numel() for p in self.model.parameters())
         print(f"number of parameters: {n_params / 1e6:.2f}M", file=sys.stderr)
-
-    def make_packer(self, source):
-        return training.BatchPacker(
-            source=source,
-            bos_token_id=self.tokenizer.get_bos_token_id(),
-            batch_size=self.train_config.batch_size,
-            row_capacity=self.max_seq_len + 1,
-            buffer_size=self.train_config.buffer_size,
-            device=self.device,
-            device_type=self.device_type,
-        )
 
     def configure_optimizers(self, model_config):
         n_embd = getattr(model_config, "n_embd", None)
@@ -180,11 +171,10 @@ class Trainer:
     def evaluate(self):
         self.model.eval()
         val_loader = SFTDataLoader(self.val_dataset, **self.source_kwargs)
-        val_packer = self.make_packer(val_loader)
 
         def batches():
             for _ in range(self.train_config.eval_iters):
-                batch = val_packer.next_batch()
+                batch = val_loader.next_batch()
                 if batch is None:
                     break
                 yield batch[0], batch[1]
@@ -210,7 +200,6 @@ class Trainer:
             "best_val_bpb": self.best_val_bpb,
             "last_update": last_update,
             "loader_state": self.train_loader.state_dict(),
-            "packer_state": self.train_packer.state_dict(),
         }
         parent = os.path.dirname(self.train_config.checkpoint_path)
         if parent:
@@ -237,7 +226,7 @@ class Trainer:
             micro_batches = 0
             loss_value = None
             while pending_examples < group_size:
-                batch = self.train_packer.next_batch(max_examples=group_size - pending_examples)
+                batch = self.train_loader.next_batch(max_examples=group_size - pending_examples)
                 if batch is None:
                     raise RuntimeError("SFT data stream ended before the update boundary")
                 inputs, targets, items_used, _ = batch
@@ -261,7 +250,7 @@ class Trainer:
             self.tracker.finish_update()
             update = self.tracker.update_count
             epoch = min(self.tracker.examples_consumed // len(self.train_dataset) + 1, tc.num_epochs)
-            finish = self.tracker.done and self.train_packer.done
+            finish = self.tracker.done and self.train_loader.done
 
             if finish or (tc.eval_interval > 0 and update % tc.eval_interval == 0):
                 metrics = self.evaluate()
