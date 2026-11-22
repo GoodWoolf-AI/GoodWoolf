@@ -162,10 +162,10 @@ goodwoolf pull <vendor>/<model>
 goodwoolf train <vendor>/<model> --stage NTP --data-name <dataset>
 ```
 
-`--stage` selects the training stage: `NTP` (base training with next token
-prediction), `SFT` (supervised fine-tuning, full answer prediction), `RL`
-(reinforcement, free thinking with final answer prediction), or `TOK`
-(tokenizer training).
+`--stage` selects the training stage: `TOK` (tokenizer training; HF templates
+only prepare the token-byte cache), `NTP` (base training with next token
+prediction), `SFT` (supervised fine-tuning, full answer prediction), or `RL`
+(reinforcement, free thinking with final answer prediction).
 
 ### Generate text
 

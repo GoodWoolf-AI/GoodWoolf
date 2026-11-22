@@ -10,7 +10,7 @@ import goodwoolf.utils.models as gw_models
 import goodwoolf.utils.ledger as gw_ledger
 from goodwoolf.utils.system import import_file, model_path
 
-TRAIN_STAGES = ("NTP", "SFT", "RL", "TOK")
+TRAIN_STAGES = ("TOK", "NTP", "SFT", "RL")
 
 @click.group()
 def main():
@@ -76,8 +76,9 @@ def checkout(model_name, id):
     "--template",
     required=False,
     is_flag=False,
-    flag_value="GoodWoolf/default",
+    flag_value="GoodWoolf/HF",
     default=None,
+    metavar="MODEL_NAME",
     help="Create model training code from a template"
 )
 @click.option("--weights", is_flag=True, default=False, help="Create randomized model weights in the input folder")
@@ -242,10 +243,10 @@ def dataset(ctx, data_name, list_items):
     default="NTP",
     show_default=True,
     help=(
+        "TOK: tokenizer training (HF templates only prepare the token-byte cache). "
         "NTP: next token prediction (base pretraining). "
         "SFT: supervised fine-tuning (full answer prediction). "
-        "RL: reinforcement learning (free thinking with final answer prediction). "
-        "TOK: tokenizer training."
+        "RL: reinforcement learning (free thinking with final answer prediction)."
     ),
 )
 @click.pass_context

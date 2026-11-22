@@ -2,10 +2,12 @@
 
 import math
 import re
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 
 from goodwoolf.utils.system import tokenizer_path
 
@@ -232,12 +234,80 @@ def pack_rollout(sequences, masks, pad_token_id, device):
     return inputs, targets
 
 
+def _tokenizer_special_ids(tokenizer):
+    special_ids = set(getattr(tokenizer, "all_special_ids", None) or [])
+    if special_ids:
+        return special_ids
+    get_special_tokens = getattr(tokenizer, "get_special_tokens", None)
+    encode_special = getattr(tokenizer, "encode_special", None)
+    if callable(get_special_tokens) and callable(encode_special):
+        for token in get_special_tokens():
+            special_ids.add(encode_special(token))
+    return special_ids
+
+
+def _decode_token(tokenizer, token_id):
+    try:
+        text = tokenizer.decode([token_id], skip_special_tokens=False, clean_up_tokenization_spaces=False)
+    except TypeError:
+        text = tokenizer.decode([token_id], skip_special_tokens=False)
+    if isinstance(text, list):
+        text = "".join(str(part) for part in text)
+    return text
+
+
+def build_token_bytes(tokenizer, vocab_size):
+    special_ids = _tokenizer_special_ids(tokenizer)
+    values = []
+    for token_id in range(int(vocab_size)):
+        if token_id in special_ids:
+            values.append(0)
+            continue
+        values.append(len(_decode_token(tokenizer, token_id).encode("utf-8")))
+    return torch.tensor(values, dtype=torch.int32)
+
+
+def save_token_bytes(model_name, token_bytes):
+    path = Path(tokenizer_path(model_name))
+    path.mkdir(parents=True, exist_ok=True)
+    target = path / "token_bytes.pt"
+    torch.save(token_bytes.to(dtype=torch.int32).cpu(), target)
+    print(f"Saved token bytes to {target}", file=sys.stderr)
+    return target
+
+
 def load_token_bytes(model_name, device):
     path = Path(tokenizer_path(model_name)) / "token_bytes.pt"
     if not path.exists():
-        raise FileNotFoundError(f"Token byte counts not found at {path}; run tokenizer training first")
+        raise FileNotFoundError(f"Token byte counts not found at {path}; run with --stage TOK first")
     token_bytes = torch.load(path, map_location=device)
     return token_bytes.to(device=device, dtype=torch.long)
+
+
+def token_losses(model, inputs, targets, ctx=None):
+    ctx = ctx or nullcontext()
+    with ctx:
+        output = model(input_ids=inputs, use_cache=False)
+    logits = getattr(output, "logits", None)
+    if logits is None:
+        raise ValueError("Model did not return logits")
+    if logits.shape[:2] != targets.shape:
+        if logits.shape[0] == targets.shape[0] and logits.shape[1] == targets.shape[1] + 1:
+            logits = logits[:, :-1, :]
+        else:
+            raise ValueError(f"Logits shape {tuple(logits.shape)} does not match targets {tuple(targets.shape)}")
+    losses = F.cross_entropy(
+        logits.reshape(-1, logits.size(-1)),
+        targets.reshape(-1),
+        ignore_index=-1,
+        reduction="none",
+    )
+    return losses.view_as(targets)
+
+
+def masked_mean(losses, targets):
+    valid = targets >= 0
+    return (losses * valid).sum() / valid.sum().clamp(min=1)
 
 
 @torch.no_grad()
@@ -249,11 +319,12 @@ def evaluate_bpb(model, batches, steps, token_bytes, ctx=None):
     batch_iter = iter(batches)
 
     for _ in range(steps):
-        inputs, targets = next(batch_iter)
-        with ctx:
-            output = model(input_ids=inputs, labels=targets, loss_reduction="none")
-        losses = output.loss.reshape(-1).to(device)
-        targets = targets.reshape(-1).to(device)
+        try:
+            inputs, targets = next(batch_iter)
+        except StopIteration:
+            break
+        targets = targets.to(device)
+        losses = token_losses(model, inputs, targets, ctx).to(device)
         valid = targets >= 0
         safe_targets = torch.where(valid, targets, torch.zeros_like(targets))
         num_bytes = torch.where(
