@@ -9,6 +9,7 @@ from contextlib import nullcontext
 
 import torch
 
+from goodwoolf.utils import training
 from goodwoolf.utils.data import NTPDataLoader, load_data
 from goodwoolf.utils.system import model_path, dataset_path
 from goodwoolf.utils.models import load_config, load_model, model_name_from_path
@@ -44,6 +45,8 @@ class Trainer:
             print(f"Tokenizer not found for {self.train_config.model_name}", file=sys.stderr)
             sys.exit(1)
 
+        self.token_bytes = training.load_token_bytes(self.train_config.model_name, self.device)
+
         loader_kwargs = dict(
             tokenizer=tokenizer,
             batch_size=self.train_config.batch_size,
@@ -62,12 +65,12 @@ class Trainer:
             self.model = load_model(self.train_config.model_name, self.train_config.checkpoint_path)
             ckpt = torch.load(self.train_config.checkpoint_path, map_location=self.device)
             self.iter_num = ckpt.get("iter_num", 0)
-            self.best_val_loss = ckpt.get("best_val_loss", 1e9)
+            self.best_val_bpb = ckpt.get("best_val_bpb", ckpt.get("best_val_loss", 1e9))
         elif os.path.exists(self.train_config.load_model):
             print(f"Initializing model from {self.train_config.load_model} with config", file=sys.stderr)
             self.model = load_model(self.train_config.model_name, self.train_config.load_model)
             self.iter_num = 0
-            self.best_val_loss = 1e9
+            self.best_val_bpb = 1e9
         else:
             print("Training requires initial weights (checkpoint or safetensors)", file=sys.stderr)
             sys.exit(1)
@@ -113,17 +116,18 @@ class Trainer:
         return loader.next_batch()
 
     @torch.no_grad()
-    def estimate_loss(self):
+    def evaluate(self):
         out = {}
         self.model.eval()
         for split in ["train", "val"]:
-            losses = torch.zeros(self.train_config.eval_iters)
-            for k in range(self.train_config.eval_iters):
-                X, Y = self.get_batch(split)
-                with self.ctx:
-                    loss = self.model(input_ids=X, labels=Y).loss
-                losses[k] = loss.item()
-            out[split] = losses.mean().item()
+            batches = (self.get_batch(split) for _ in range(self.train_config.eval_iters))
+            out[split] = training.evaluate_bpb(
+                self.model,
+                batches,
+                self.train_config.eval_iters,
+                self.token_bytes,
+                self.ctx,
+            )
         self.model.train()
         return out
 
@@ -148,15 +152,15 @@ class Trainer:
                 pg["lr"] = lr
 
             if self.iter_num % tc.eval_interval == 0:
-                losses = self.estimate_loss()
-                print(f"step {self.iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}", file=sys.stderr)
-                if tc.always_save_checkpoint or losses["val"] < self.best_val_loss:
-                    self.best_val_loss = losses["val"]
+                metrics = self.evaluate()
+                print(f"step {self.iter_num}: train bpb {metrics['train']:.4f}, val bpb {metrics['val']:.4f}", file=sys.stderr)
+                if tc.always_save_checkpoint or metrics["val"] < self.best_val_bpb:
+                    self.best_val_bpb = metrics["val"]
                     torch.save({
                         "model": self.model.state_dict(),
                         "optimizer": self.optimizer.state_dict(),
                         "iter_num": self.iter_num,
-                        "best_val_loss": self.best_val_loss,
+                        "best_val_bpb": self.best_val_bpb,
                     }, tc.checkpoint_path)
                     print(f"checkpoint saved to {tc.checkpoint_path}", file=sys.stderr)
 

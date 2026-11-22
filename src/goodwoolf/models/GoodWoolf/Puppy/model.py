@@ -282,8 +282,8 @@ class GPT(nn.Module):
 
         if targets is not None:
             return F.cross_entropy(
-                logits.view(-1, logits.size(-1)),
-                targets.view(-1),
+                logits.reshape(-1, logits.size(-1)),
+                targets.reshape(-1),
                 ignore_index=-1,
                 reduction=loss_reduction,
             )

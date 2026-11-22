@@ -156,6 +156,8 @@ class Tokenizer:
         assistant_end = self.encode_special("<|assistant_end|>")
         if ids and ids[-1] == assistant_end:
             ids.pop()
+        if len(ids) >= max_tokens:
+            ids = ids[:-1]
         if not ids or ids[-1] != assistant_start:
             ids.append(assistant_start)
         return ids

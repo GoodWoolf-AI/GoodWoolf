@@ -9,6 +9,7 @@ from contextlib import nullcontext
 
 import torch
 
+from goodwoolf.utils import training
 from goodwoolf.utils.data import SFTDataLoader, load_data
 from goodwoolf.utils.models import load_config, load_model, model_name_from_path
 from goodwoolf.utils.system import model_path
@@ -34,6 +35,7 @@ class Trainer:
         torch.manual_seed(1337)
 
         self.max_seq_len = train_config.max_seq_len or model_config.max_position_embeddings
+        self.token_bytes = training.load_token_bytes(train_config.model_name, self.device)
         if train_config.total_batch_size is not None:
             tokens_per_micro_batch = train_config.batch_size * self.max_seq_len
             if train_config.total_batch_size % tokens_per_micro_batch:
@@ -76,12 +78,12 @@ class Trainer:
             self.model = load_model(train_config.model_name, train_config.checkpoint_path)
             ckpt = torch.load(train_config.checkpoint_path, map_location="cpu")
             self.iter_num = ckpt.get("iter_num", 0)
-            self.best_val_loss = ckpt.get("best_val_loss", float("inf"))
+            self.best_val_bpb = ckpt.get("best_val_bpb", ckpt.get("best_val_loss", float("inf")))
         elif os.path.exists(train_config.load_model):
             print(f"Initializing model from {train_config.load_model}", file=sys.stderr)
             self.model = load_model(train_config.model_name, train_config.load_model)
             self.iter_num = 0
-            self.best_val_loss = float("inf")
+            self.best_val_bpb = float("inf")
         else:
             print("Training requires initial weights (checkpoint or safetensors)", file=sys.stderr)
             sys.exit(1)
@@ -165,25 +167,33 @@ class Trainer:
         decay = (progress - (1.0 - tc.warmdown_ratio)) / tc.warmdown_ratio
         return (1 - decay) + decay * tc.final_lr_frac
 
-    @torch.no_grad()
-    def estimate_loss(self):
+    def evaluate(self):
         self.model.eval()
-        loader = SFTDataLoader(self.val_dataset, **self.val_loader_kwargs)
-        losses = []
-        for _ in range(self.train_config.eval_iters):
-            inputs, targets, _, _, _ = loader.next_batch()
-            with self.ctx:
-                loss = self.model(input_ids=inputs, labels=targets).loss
-            losses.append(loss.item())
+        val_loader = SFTDataLoader(self.val_dataset, **self.val_loader_kwargs)
+
+        def batches():
+            while True:
+                inputs, targets, _, _, _ = val_loader.next_batch()
+                yield inputs, targets
+
+        metrics = {
+            "val/bpb": training.evaluate_bpb(
+                self.model,
+                batches(),
+                self.train_config.eval_iters,
+                self.token_bytes,
+                self.ctx,
+            )
+        }
         self.model.train()
-        return sum(losses) / len(losses)
+        return metrics
 
     def save_checkpoint(self, last_step=False):
         checkpoint = {
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "iter_num": self.iter_num,
-            "best_val_loss": self.best_val_loss,
+            "best_val_bpb": self.best_val_bpb,
             "last_step": last_step,
         }
         parent = os.path.dirname(self.train_config.checkpoint_path)
@@ -224,13 +234,14 @@ class Trainer:
 
             finish = last_step or (tc.num_iterations > 0 and self.iter_num >= tc.num_iterations)
             if finish or (tc.eval_interval > 0 and self.iter_num % tc.eval_interval == 0):
-                val_loss = self.estimate_loss()
+                metrics = self.evaluate()
+                val_bpb = metrics["val/bpb"]
                 print(
-                    f"step {self.iter_num:05d}: val loss {val_loss:.4f} | epoch {epoch}",
+                    f"step {self.iter_num:05d}: val bpb {val_bpb:.4f} | epoch {epoch}",
                     file=sys.stderr,
                 )
-                if val_loss < self.best_val_loss:
-                    self.best_val_loss = val_loss
+                if val_bpb < self.best_val_bpb:
+                    self.best_val_bpb = val_bpb
                     self.save_checkpoint(finish)
 
             t1 = time.time()
