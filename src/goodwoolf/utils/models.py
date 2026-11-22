@@ -147,7 +147,7 @@ def create_model(model_name, config, template, weights):
         save_config(model_name)
     if template:
         print("Creating pipeline files:", template, "->", model_name)
-        copy_dir(MODEL_BASE / template, MODEL_BASE / model_name)
+        copy_dir(MODEL_BASE / template, MODEL_BASE / model_name, ignore=("config", "__pycache__"))
     if weights:
         save_model(model_name, model_path(model_name))
 

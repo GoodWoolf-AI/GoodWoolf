@@ -76,7 +76,7 @@ def checkout(model_name, id):
     "--template",
     required=False,
     is_flag=False,
-    flag_value="GoodWoolf/HF",
+    flag_value="OpenAI-Community/GPT2",
     default=None,
     metavar="MODEL_NAME",
     help="Create model training code from a template"

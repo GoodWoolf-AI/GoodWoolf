@@ -7,7 +7,8 @@
   "is_local": false,
   "local_files_only": false,
   "model_max_length": 1024,
-  "pad_token": null,
+  "pad_token": "<|endoftext|>",
+  "chat_template": "{% for message in messages %}{{ message['role'] }}: {{ message['content'] }}\n{% endfor %}Assistant:",
   "tokenizer_class": "GPT2Tokenizer",
   "unk_token": "<|endoftext|>"
 }

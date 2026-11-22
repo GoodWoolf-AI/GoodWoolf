@@ -55,12 +55,15 @@ def ensure_dir(data_dir):
     return path
 
 
-def copy_dir(src_dir, dst_dir):
+def copy_dir(src_dir, dst_dir, ignore=()):
     """Copy a folder from src_dir to dst_dir."""
     src_path = Path(src_dir)
     dst_path = Path(dst_dir)
     dst_path.mkdir(parents=True, exist_ok=True)
+    ignored = set(ignore)
     for item in src_path.iterdir():
+        if item.name in ignored:
+            continue
         dest = dst_path / item.name
         if item.is_dir():
             shutil.copytree(item, dest, dirs_exist_ok=True)
