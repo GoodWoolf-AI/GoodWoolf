@@ -1,6 +1,7 @@
 """Generic helpers for training and evaluation."""
 
 import math
+import os
 import re
 import sys
 from contextlib import nullcontext
@@ -9,7 +10,87 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
+from goodwoolf.utils.models import load_model
 from goodwoolf.utils.system import tokenizer_path
+
+def resolve_device(train_config):
+    has_cuda = torch.cuda.is_available()
+    device = train_config.device or ("cuda" if has_cuda else "cpu")
+    device_type = "cuda" if "cuda" in device and has_cuda else "cpu"
+    return device, device_type
+
+
+def make_context(device_type, dtype_name):
+    compute_dtype = {
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+    }[dtype_name]
+    if device_type == "cpu":
+        return torch.float32, nullcontext()
+    return compute_dtype, torch.amp.autocast(device_type=device_type, dtype=compute_dtype)
+
+
+def configure_optimizers(model, train_config, device_type):
+    decay, no_decay = [], []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if param.ndim <= 1 or name.endswith(".bias"):
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    groups = [
+        {"params": decay, "weight_decay": train_config.weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
+    return torch.optim.AdamW(
+        groups,
+        lr=train_config.learning_rate,
+        betas=(train_config.beta1, train_config.beta2),
+        fused=device_type == "cuda",
+    )
+
+
+def get_lr(progress, train_config):
+    tc = train_config
+    if tc.warmup_ratio > 0 and progress < tc.warmup_ratio:
+        return tc.learning_rate * progress / tc.warmup_ratio
+    if progress <= 1.0 - tc.warmdown_ratio:
+        return tc.learning_rate
+    denominator = max(tc.warmdown_ratio, 1e-8)
+    decay_ratio = min((progress - (1.0 - tc.warmdown_ratio)) / denominator, 1.0)
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+    return tc.min_lr + coeff * (tc.learning_rate - tc.min_lr)
+
+
+def set_lr(optimizer, lr):
+    for group in optimizer.param_groups:
+        group["lr"] = lr
+
+
+def load_model_from_file(model_name, path):
+    return load_model(model_name, path)
+
+
+def load_model_state(model_name, pretrained_path, checkpoint_path):
+    if os.path.exists(checkpoint_path):
+        print(f"Resuming model from {checkpoint_path}", file=sys.stderr)
+        model = load_model_from_file(model_name, checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        return model, checkpoint
+    if os.path.exists(pretrained_path):
+        print(f"Initializing model from {pretrained_path}", file=sys.stderr)
+        return load_model_from_file(model_name, pretrained_path), None
+    print("Training requires initial weights (checkpoint or safetensors)", file=sys.stderr)
+    sys.exit(1)
+
+
+def restore_progress(checkpoint, examples_per_update, total_examples, default_update=0):
+    examples_consumed = checkpoint.get("examples_consumed", 0) if checkpoint else 0
+    update_count = checkpoint.get("update_count", checkpoint.get("iter_num", default_update)) if checkpoint else default_update
+    return min(examples_consumed, total_examples), update_count
+
 
 ANSWER_RE = re.compile(r"####\s*(-?[0-9][0-9,]*(?:\.[0-9]+)?)")
 

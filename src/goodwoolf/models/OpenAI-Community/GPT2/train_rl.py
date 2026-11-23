@@ -2,26 +2,22 @@ import argparse
 import os
 import sys
 import time
-from pathlib import Path
 
 import torch
 
 from goodwoolf.utils import training
+from goodwoolf.utils.common import get_pad_token_id
 from goodwoolf.utils.data import RLDataLoader, load_data
 from goodwoolf.utils.models import load_config, model_name_from_path
-from goodwoolf.utils.system import import_file, model_path
-
-_common = import_file(
-    Path(__file__).with_name("common.py"), f"common_{model_name_from_path(__file__)}"
+from goodwoolf.utils.system import model_path
+from goodwoolf.utils.training import (
+    configure_optimizers,
+    load_model_state,
+    make_context,
+    resolve_device,
+    restore_progress,
+    set_lr,
 )
-configure_optimizers = _common.configure_optimizers
-generate_samples = _common.generate_samples
-get_pad_token_id = _common.get_pad_token_id
-load_model_state = _common.load_model_state
-make_context = _common.make_context
-resolve_device = _common.resolve_device
-restore_progress = _common.restore_progress
-set_lr = _common.set_lr
 
 
 def rl_loss(logp, targets, rewards, scale):
@@ -101,16 +97,15 @@ class Trainer:
         example_idx = self.example_idx
         self.example_idx += 1
         self.model.eval()
-        sequences, masks = generate_samples(
-            self.model,
+        sequences, masks = self.model.generate(
             self.tokenizer,
             prompt_ids,
-            tc.num_samples,
-            tc.max_new_tokens,
-            tc.temperature,
-            tc.top_k,
-            update * 1000003 + example_idx * 9176,
-            self.device,
+            num_samples=tc.num_samples,
+            max_new_tokens=tc.max_new_tokens,
+            temperature=tc.temperature,
+            top_k=tc.top_k,
+            do_sample=True,
+            seed=update * 1000003 + example_idx * 9176,
         )
         rewards = [
             training.reward(answer, self.tokenizer.decode(sequence[len(prompt_ids):]))
@@ -129,16 +124,15 @@ class Trainer:
         num_examples = 0
         for example_idx in range(tc.eval_examples):
             tokens, answer = self.val_loader.next_batch()
-            sequences, _ = generate_samples(
-                self.model,
+            sequences, _ = self.model.generate(
                 self.tokenizer,
                 tokens,
-                k_max,
-                tc.max_new_tokens,
-                tc.temperature,
-                tc.top_k,
-                update * 1000003 + example_idx,
-                self.device,
+                num_samples=k_max,
+                max_new_tokens=tc.max_new_tokens,
+                temperature=tc.temperature,
+                top_k=tc.top_k,
+                do_sample=True,
+                seed=update * 1000003 + example_idx,
             )
             outcomes = [
                 training.evaluate(answer, self.tokenizer.decode(sequence[len(tokens):]))

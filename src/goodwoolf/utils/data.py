@@ -11,6 +11,7 @@ from pathlib import Path
 
 import torch
 
+from goodwoolf.utils.common import get_bos_token_id, render_conversation, render_prompt
 from goodwoolf.utils.models import DATASET_BASE
 from goodwoolf.utils.system import ensure_dir, import_file
 
@@ -169,102 +170,6 @@ def split_source_texts(paths, reader, count, train_ratio=0.8):
         islice(reader(paths), 0, split_index),
         islice(reader(paths), split_index, None),
     )
-
-
-def render_mc(question, letters, choices):
-    """Render a multiple-choice question the way nanochat does.
-
-    The letter follows the choice with no whitespace (``- choice=A``) so the
-    assistant target ``A`` is the exact same token as in the prompt.
-    """
-    query = f"Multiple Choice question: {question}\n"
-    query += "".join(f"- {choice}={letter}\n" for letter, choice in zip(letters, choices))
-    query += "\nRespond only with the letter of the correct answer."
-    return query
-
-
-def get_bos_token_id(tokenizer):
-    getter = getattr(tokenizer, "get_bos_token_id", None)
-    if callable(getter):
-        token_id = getter()
-        if token_id is not None:
-            return token_id
-    for attribute in ("bos_token_id", "eos_token_id", "pad_token_id"):
-        token_id = getattr(tokenizer, attribute, None)
-        if token_id is not None:
-            return token_id
-    return 0
-
-
-def _message_text(message):
-    content = message.get("content", "")
-    if isinstance(content, str):
-        return content
-    return "\n".join(part.get("text", "") for part in content if isinstance(part, dict))
-
-
-def _chat_messages(messages):
-    return [{"role": message["role"], "content": _message_text(message)} for message in messages]
-
-
-def _encode_chat_text(tokenizer, text):
-    try:
-        return tokenizer.encode(text, add_special_tokens=False)
-    except TypeError:
-        return tokenizer.encode(text)
-
-
-def render_conversation(tokenizer, conversation, max_tokens=2048):
-    renderer = getattr(tokenizer, "render_conversation", None)
-    if callable(renderer):
-        return renderer(conversation, max_tokens=max_tokens)
-    apply_chat_template = getattr(tokenizer, "apply_chat_template", None)
-    if not callable(apply_chat_template):
-        raise ValueError("Tokenizer must provide render_conversation() or apply_chat_template()")
-    messages = _chat_messages(conversation["messages"])
-    full_text = apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-    prompt_messages = messages[:-1] if messages and messages[-1]["role"] == "assistant" else messages
-    prompt_text = apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=bool(prompt_messages))
-    ids = _encode_chat_text(tokenizer, full_text)
-    prompt_ids = _encode_chat_text(tokenizer, prompt_text)
-    bos_token_id = get_bos_token_id(tokenizer)
-    if bos_token_id is not None and (not ids or ids[0] != bos_token_id):
-        ids = [bos_token_id] + ids
-        prompt_ids = [bos_token_id] + prompt_ids
-    prompt_len = 0
-    for prompt_id, full_id in zip(prompt_ids, ids):
-        if prompt_id != full_id:
-            break
-        prompt_len += 1
-    mask = [0] * prompt_len + [1] * max(0, len(ids) - prompt_len)
-    return ids[:max_tokens], mask[:max_tokens]
-
-
-def render_prompt(tokenizer, messages, max_tokens=2048):
-    renderer = getattr(tokenizer, "render_prompt", None)
-    if callable(renderer):
-        return renderer(messages, max_tokens=max_tokens)
-    apply_chat_template = getattr(tokenizer, "apply_chat_template", None)
-    if not callable(apply_chat_template):
-        raise ValueError("Tokenizer must provide render_prompt() or apply_chat_template()")
-    text = apply_chat_template(_chat_messages(messages), tokenize=False, add_generation_prompt=True)
-    ids = _encode_chat_text(tokenizer, text)
-    bos_token_id = get_bos_token_id(tokenizer)
-    if bos_token_id is not None and (not ids or ids[0] != bos_token_id):
-        ids = [bos_token_id] + ids
-    return ids[:max_tokens]
-
-
-def record_text(record):
-    """Return the plain text of a conversation record (used for statistics)."""
-    chunks = []
-    for message in record["messages"]:
-        content = message["content"]
-        if isinstance(content, str):
-            chunks.append(content)
-        else:
-            chunks.extend(part["text"] for part in content)
-    return "\n".join(chunks)
 
 
 def write_parquet_rows(path, rows):

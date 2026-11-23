@@ -3,7 +3,6 @@
 
 import os
 import sys
-import inspect
 import torch
 import yaml
 
@@ -11,6 +10,7 @@ from pathlib import Path
 from huggingface_hub import HfApi
 from collections import defaultdict
 
+from goodwoolf.utils.common import render_prompt
 from goodwoolf.utils.system import checkpoint_path, copy_dir, dataset_path, model_path
 
 HF_API = HfApi()
@@ -298,66 +298,19 @@ def generate(model_name, load_path, prompt, max_tokens):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
 
-    if "prompt_ids" in inspect.signature(model.generate).parameters:
-        prompt_ids = tokenizer.render_prompt([{"role": "user", "content": prompt}])
-        sequences, _ = model.generate(
-            tokenizer,
-            prompt_ids,
-            num_samples=1,
-            max_new_tokens=max_tokens,
-            temperature=0.7,
-            top_k=50,
-        )
-        return tokenizer.decode(sequences[0][len(prompt_ids):], skip_special_tokens=True)
-
-    inputs = tokenizer(prompt, return_tensors="pt")
-    input_ids = inputs["input_ids"]
-    if not isinstance(input_ids, torch.Tensor):
-        input_ids = torch.tensor(input_ids, dtype=torch.long)
-    if input_ids.dim() == 1:
-        input_ids = input_ids.unsqueeze(0)
-    inputs["input_ids"] = input_ids
-    if "attention_mask" in inputs:
-        attention_mask = inputs["attention_mask"]
-        if not isinstance(attention_mask, torch.Tensor):
-            attention_mask = torch.tensor(attention_mask, dtype=torch.long)
-        if attention_mask.dim() == 1:
-            attention_mask = attention_mask.unsqueeze(0)
-        inputs["attention_mask"] = attention_mask
-
-    # Ensure input prompt has at least one token
-    if inputs["input_ids"].shape[1] == 0:
-        bos_token_id = tokenizer.bos_token_id
-        if bos_token_id is None:
-            raise ValueError(
-                "Cannot generate from an empty prompt: "
-                "the tokenizer has no BOS token."
-            )
-        inputs["input_ids"] = torch.tensor(
-            [[bos_token_id]],
-            dtype=torch.long,
-            device=inputs["input_ids"].device,
-        )
-        inputs["attention_mask"] = torch.ones_like(
-            inputs["input_ids"]
-        )
-
-    # Move variables and attributes together
-    # inputs {
-    #     "input_ids": tensor[...],
-    #     "attention_mask": tensor[...]
-    # }
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    output = model.generate(
-        **inputs,
+    prompt_ids = render_prompt(tokenizer, [{"role": "user", "content": prompt}])
+    if not prompt_ids:
+        raise ValueError("Prompt rendered to an empty token sequence")
+    sequences, _ = model.generate(
+        tokenizer,
+        prompt_ids,
+        num_samples=1,
         max_new_tokens=max_tokens,
-        do_sample=True,
         temperature=0.7,
-        pad_token_id=tokenizer.eos_token_id,
+        top_k=50,
+        do_sample=True,
     )
-    result = tokenizer.decode(output[0], skip_special_tokens=True)
-    return result
+    return tokenizer.decode(sequences[0][len(prompt_ids):], skip_special_tokens=True)
 
 
 @torch.no_grad()

@@ -31,7 +31,8 @@ import argparse
 from itertools import islice
 from pathlib import Path
 
-from goodwoolf.utils.data import JsonDataset, prepare_json_splits, record_text, split_files
+from goodwoolf.utils.common import record_text
+from goodwoolf.utils.data import JsonDataset, prepare_json_splits, split_files
 from goodwoolf.utils.system import dataset_path
 
 DATASET_NAME = "openai/openai_humaneval"

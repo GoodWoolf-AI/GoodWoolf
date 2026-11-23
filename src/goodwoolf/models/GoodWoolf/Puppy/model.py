@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from goodwoolf.utils.common import get_bos_token_id
 from goodwoolf.utils.models import model_name_from_path
 
 
@@ -329,77 +330,15 @@ class Model(GPT):
         return super().load_state_dict(normalized, strict=strict, assign=assign)
 
     @torch.inference_mode()
-    def chat(
-        self,
-        tokenizer,
-        messages,
-        max_tokens=256,
-        temperature=0.6,
-        top_k=50,
-        do_sample=True,
-    ):
-        prompt_ids = tokenizer.render_prompt(messages)
-        if not prompt_ids:
-            raise ValueError("Conversation rendered to an empty prompt")
-
-        device = next(self.parameters()).device
-        ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
-        python_start = tokenizer.encode_special("<|python_start|>")
-        python_end = tokenizer.encode_special("<|python_end|>")
-        output_start = tokenizer.encode_special("<|output_start|>")
-        output_end = tokenizer.encode_special("<|output_end|>")
-        stop_ids = {
-            tokenizer.encode_special("<|assistant_end|>"),
-            tokenizer.get_bos_token_id(),
-        }
-        forced_tokens = []
-        python_expression = []
-        in_python = False
-        generated = 0
-
-        while generated < max_tokens:
-            if forced_tokens:
-                next_id = forced_tokens.pop(0)
-                next_ids = torch.tensor([[next_id]], dtype=torch.long, device=device)
-            else:
-                logits = super().forward(ids)[:, -1, :]
-                if top_k is not None and top_k > 0:
-                    values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                    logits = logits.masked_fill(logits < values[:, [-1]], -float("inf"))
-                if do_sample and temperature > 0:
-                    next_ids = torch.multinomial(F.softmax(logits / temperature, dim=-1), num_samples=1)
-                else:
-                    next_ids = torch.argmax(logits, dim=-1, keepdim=True)
-                next_id = next_ids.item()
-
-            generated += 1
-            if next_id in stop_ids:
-                break
-            if next_id == python_start:
-                in_python = True
-                python_expression = []
-            elif next_id == python_end and in_python:
-                in_python = False
-                result = _use_calculator(tokenizer.decode(python_expression))
-                python_expression = []
-                if result is not None:
-                    forced_tokens.extend([output_start] + tokenizer.encode(str(result)) + [output_end])
-            elif in_python:
-                python_expression.append(next_id)
-            ids = torch.cat((ids, next_ids), dim=1)
-
-        response_ids = ids[0, len(prompt_ids):].tolist()
-        return tokenizer.decode(response_ids, skip_special_tokens=True)
-
-    @torch.inference_mode()
     def generate(
         self,
         tokenizer,
         prompt_ids,
         num_samples=1,
         max_new_tokens=256,
-        temperature=1.0,
+        temperature=0.6,
         top_k=50,
+        do_sample=True,
         seed=42,
     ):
         device = next(self.parameters()).device
@@ -410,7 +349,7 @@ class Model(GPT):
         output_end = tokenizer.encode_special("<|output_end|>")
         stop_ids = {
             tokenizer.encode_special("<|assistant_end|>"),
-            tokenizer.get_bos_token_id(),
+            get_bos_token_id(tokenizer),
         }
         sequences, masks = [], []
 
@@ -433,7 +372,7 @@ class Model(GPT):
                     if top_k is not None and top_k > 0:
                         values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                         logits = logits.masked_fill(logits < values[:, [-1]], -float("inf"))
-                    if temperature > 0:
+                    if do_sample and temperature > 0:
                         next_ids = torch.multinomial(
                             F.softmax(logits / temperature, dim=-1),
                             num_samples=1,

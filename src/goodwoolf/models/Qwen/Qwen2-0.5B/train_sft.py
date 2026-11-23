@@ -2,25 +2,22 @@ import argparse
 import os
 import sys
 import time
-from pathlib import Path
 
 import torch
 
 from goodwoolf.utils import training
 from goodwoolf.utils.data import SFTDataLoader, load_data
 from goodwoolf.utils.models import load_config, model_name_from_path
-from goodwoolf.utils.system import import_file, model_path
-
-_common = import_file(
-    Path(__file__).with_name("common.py"), f"common_{model_name_from_path(__file__)}"
+from goodwoolf.utils.system import model_path
+from goodwoolf.utils.training import (
+    configure_optimizers,
+    get_lr,
+    load_model_state,
+    make_context,
+    resolve_device,
+    restore_progress,
+    set_lr,
 )
-configure_optimizers = _common.configure_optimizers
-get_lr = _common.get_lr
-load_model_state = _common.load_model_state
-make_context = _common.make_context
-resolve_device = _common.resolve_device
-restore_progress = _common.restore_progress
-set_lr = _common.set_lr
 
 
 class Trainer:

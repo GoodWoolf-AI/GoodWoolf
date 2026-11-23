@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 import sys
 
+import goodwoolf.utils.common as gw_common
 import goodwoolf.utils.models as gw_models
 import goodwoolf.utils.ledger as gw_ledger
 from goodwoolf.utils.system import import_file, model_path
@@ -125,71 +126,20 @@ def run(model_name, load_path, prompt, max_tokens):
 
 @main.command()
 @click.argument("model-name", required=True, help="Model name in format <vendor>/<model>.")
-@click.option("--load-path", metavar="PATH", help="Path to model weights.")
-@click.option("--prompt", metavar="PROMPT", default="", help="Prompt the model and get a single response.")
 @click.option("--max-tokens", metavar="TOKENS", type=int, default=256, help="Max number of tokens in the response.")
 @click.option("--temperature", type=float, default=0.6, help="Sampling temperature.")
 @click.option("--top-k", type=int, default=50, help="Top-k sampling parameter.")
 @click.option("--device", default="", help="Device to run on (cuda, cpu, or torch device string).")
-def chat(model_name, load_path, prompt, max_tokens, temperature, top_k, device):
+def chat(model_name, max_tokens, temperature, top_k, device):
     """Chat with a model."""
-    import torch
-
-    if load_path is None:
-        load_path = model_path(model_name)
     try:
-        configs = gw_models.load_config(model_name)
-        tokenizer = configs["tokenizer"]
-        model = gw_models.load_model(model_name, load_path)
-        if not hasattr(model, "chat"):
-            raise ValueError(f"Model {model_name} does not implement chat()")
-
-        target_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        model.to(target_device)
-        if "cuda" in str(target_device):
-            model.to(dtype=torch.bfloat16)
-        model.eval()
-
-        messages = []
-        if not prompt:
-            print("\nGoodWoolf Chat")
-            print("-" * 50)
-            print("Type 'quit' or 'exit' to end the conversation")
-            print("Type 'clear' to start a new conversation")
-            print("-" * 50)
-
-        while True:
-            if prompt:
-                user_input = prompt
-            else:
-                try:
-                    user_input = input("\nUser: ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    print("\nGoodbye!")
-                    break
-
-            if user_input.lower() in ("quit", "exit"):
-                print("Goodbye!")
-                break
-            if user_input.lower() == "clear":
-                messages = []
-                print("Conversation cleared.")
-                continue
-            if not user_input:
-                continue
-
-            messages.append({"role": "user", "content": user_input})
-            response = model.chat(
-                tokenizer,
-                messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_k=top_k,
-            )
-            print(f"\nAssistant: {response}")
-            messages.append({"role": "assistant", "content": response})
-            if prompt:
-                break
+        gw_common.chat(
+            model_name,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            device=device,
+        )
     except Exception as e:
         raise click.ClickException(str(e))
 
