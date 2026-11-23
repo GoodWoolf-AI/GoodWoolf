@@ -39,10 +39,11 @@ GoodWoolf builds large foundation models on commodity hardware using the followi
 
 - **Data-Independent Scaling:** Decoupling total training time from global data volume, bounding system latency to individual run durations rather than aggregate data sizes.
 
-Learn more by following the online documenation:
+Learn more by following the online documentation:
 
 - [Get Started](https://docs.goodwoolf.ai/)
   - [Introduction](https://docs.goodwoolf.ai/introduction)
+  - [Supported Models](#supported-models)
   - [Supported Datasets](#supported-datasets)
 - [Features](https://docs.goodwoolf.ai/category/features)
   - [Training Process](https://docs.goodwoolf.ai/features/training-process)
@@ -51,7 +52,7 @@ Learn more by following the online documenation:
   - [Model Poisoning Controls](https://docs.goodwoolf.ai/features/model-poisoning)
 - [Configure](https://docs.goodwoolf.ai/category/configure)
   - [Python Environment](https://docs.goodwoolf.ai/setup/environment)
-  - [Virtaul Memory](https://docs.goodwoolf.ai/setup/virtual-memory)
+  - [Virtual Memory](https://docs.goodwoolf.ai/setup/virtual-memory)
 - [Usage](https://docs.goodwoolf.ai/category/usage)
   - [Naming Conventions](https://docs.goodwoolf.ai/usage/naming-conventions)
   - [Prepare training data](https://docs.goodwoolf.ai/usage/prepare-data)
@@ -74,9 +75,9 @@ The project consists of two repositories:
 The training process is hardware-agnostic, parallel, and completely asynchronous.
 
 ```bash
-=======================================================
-Visual represenation of Collaborative Training Workflow
-=======================================================
+========================================================
+Visual representation of Collaborative Training Workflow
+========================================================
 
           +-----------+----------+-----------+
           |           |          |           |
@@ -120,20 +121,36 @@ Visual represenation of Collaborative Training Workflow
        +-----------------------------+
 ```
 
+## Supported Models
+
+Models live in `src/goodwoolf/models/<vendor>/<model>/`. Each bundled model
+includes runtime code and training entry points for `TOK`, `NTP`, `SFT`, and
+`RL`.
+
+| Model | Architecture | Notes |
+| --- | --- | --- |
+| `GoodWoolf/Puppy` | Custom LLaMA-style transformer; 12 layers, 768 hidden size, 32K vocab, 2048 context. | Native GoodWoolf model; `TOK` trains a RustBPE tokenizer. |
+| `OpenAI-Community/GPT2` | GPT-2 small; 12 layers, 768 hidden size, 50,257 vocab, 1024 context. | Hugging Face GPT-2 wrapper. `TOK` prepares the token-byte cache instead of training a new tokenizer. |
+| `Qwen/Qwen2-0.5B` | Qwen2 0.5B; 24 layers, 896 hidden size, 151,936 vocab, 131,072 context. | Hugging Face Qwen2 wrapper. `TOK` prepares the token-byte cache instead of training a new tokenizer. |
+
+Run `gw model --list` or `gw model --list <vendor>` to list local models. Use
+`gw model --list --remote hf [vendor]` to list Hugging Face models.
+
 ## Supported Datasets
 
 You can train GoodWoolf on your own private data. To make things easier, a few
 public datasets are also integrated so you can use them right away.
 
 Datasets live in `src/goodwoolf/data/<vendor>/<dataset>/` and are prepared with
-`goodwoolf dataset <vendor>/<dataset> --fetch --prepare`. The **Training stage** column marks
-the stage each dataset is intended for: `NTP` (base training with next token
-prediction), `SFT` (supervised fine-tuning), or `RL` (reinforcement learning).
+`gw dataset <vendor>/<dataset> --fetch --prepare`. Run `gw dataset --list` to see
+the current list. The **Training stage** column marks the stage each dataset is
+intended for: `NTP` (base training with next token prediction), `SFT`
+(supervised fine-tuning), or `RL` (reinforcement learning).
 
 | Dataset | Description | Training stage |
 | --- | --- | --- |
-| `nvidia/climbmix` | ClimbMix-400B pretraining corpus (GPT-2 tokenized). | NTP |
-| `karpathy/climbmix-400b-shuffle` | Nanochat-style globally shuffled ClimbMix-400B raw-text corpus. | NTP |
+| `nvidia/climbmix` | ClimbMix-400B pretraining corpus prepared as tokenizer-independent text. | NTP |
+| `alea-institute/kl3m-usc` | KL3M US Code legal text corpus prepared as tokenizer-independent parquet text. | NTP |
 | `Skylion007/openwebtext` | OpenWebText web-text corpus for pretraining. | NTP |
 | `Salesforce/wikitext` | WikiText-2 language-modeling corpus. | NTP |
 | `allenai/ai2_arc` | AI2 Reasoning Challenge, multiple-choice science questions. | SFT |
@@ -144,40 +161,89 @@ prediction), `SFT` (supervised fine-tuning), or `RL` (reinforcement learning).
 
 ## Usage Examples
 
+`goodwoolf` and `gw` are equivalent CLI names.
+
+### Inspect available components
+
+```bash
+gw vendor --list
+gw model --list
+gw model --list GoodWoolf
+gw dataset --list
+```
+
 ### Prepare training data
 
 ```bash
-goodwoolf dataset <dataset> --fetch --prepare
+gw dataset <vendor>/<dataset> --fetch --prepare
 ```
 
-### Download model weights
+For example:
 
 ```bash
-goodwoolf pull <vendor>/<model>
+gw dataset nvidia/climbmix --fetch --prepare
+gw dataset HuggingFaceTB/smoltalk --fetch --prepare
+```
+
+### Fetch or create a model
+
+```bash
+gw pull <vendor>/<model> [--model-id <MODEL_ID>]
+gw model <vendor>/<model> --config --weights
+gw model <new-vendor>/<new-model> --template OpenAI-Community/GPT2
 ```
 
 ### Train model
 
 ```bash
-goodwoolf train <vendor>/<model> --stage NTP --data-name <dataset>
+gw train <vendor>/<model> --stage NTP --data-name <vendor>/<dataset>
 ```
 
-`--stage` selects the training stage: `TOK` (tokenizer training; HF templates
-only prepare the token-byte cache), `NTP` (base training with next token
+For example:
+
+```bash
+gw train GoodWoolf/Puppy --stage TOK --data-name nvidia/climbmix
+gw train GoodWoolf/Puppy --stage NTP --data-name nvidia/climbmix
+gw train GoodWoolf/Puppy --stage SFT --data-name HuggingFaceTB/smoltalk
+gw train GoodWoolf/Puppy --stage RL --data-name openai/gsm8k
+```
+
+`--stage` selects the training stage: `TOK` (tokenizer training; HF models
+prepare the token-byte cache), `NTP` (base training with next token
 prediction), `SFT` (supervised fine-tuning, full answer prediction), or `RL`
 (reinforcement, free thinking with final answer prediction).
 
 ### Generate text
 
 ```bash
-goodwoolf run <vendor>/<model> --prompt "A long time ago..."
+gw run <vendor>/<model> --prompt "A long time ago..." --max-tokens 100
+```
+
+### Chat interactively
+
+```bash
+gw chat <vendor>/<model> --max-tokens 256 --temperature 0.6 --top-k 50
+```
+
+`gw chat` loads the active weights for the model name. Type `quit` or `exit`
+to end the session, or `clear` to start a new conversation. For a single
+prompt, use `gw run`.
+
+### Save and manage checkpoints
+
+```bash
+gw save <vendor>/<model> [--load-path <checkpoint>]
+gw checkout <vendor>/<model> --model-id <MODEL_ID>
+gw merge <vendor>/<model> --data-name <vendor>/<dataset> --model-id <MODEL_ID>
+gw ledger <vendor>/<model> --check
 ```
 
 ## Get involved
 
-GoodWoolf is built by an open-source community project.
+The idea behind GoodWoolf is to build large models together as an open-source community.
+Building together is cheaper, faster, and more environmentally friendly.
 
-Whether you're trainig and sharing models, improving the platform, fixing bugs or writing documentation, your contributions are welcome.
+Whether you're training and sharing models, improving the platform, fixing bugs, or writing documentation, your contributions are welcome.
 
 ## License
 - [GoodWoolf](https://github.com/GoodWoolf-AI/GoodWoolf): MIT

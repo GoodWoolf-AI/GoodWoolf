@@ -360,7 +360,7 @@ def add_weights(model_name: str, base_model_path: str, new_model_path: str):
     return base_model
 
 
-def merge(model_name, data_name, id, batch_size, eval_iters, dtype):
+def merge(model_name, data_name, model_id, batch_size, eval_iters, dtype):
     """Merge a checkpoint into the active model."""
     import os
     import time
@@ -388,7 +388,7 @@ def merge(model_name, data_name, id, batch_size, eval_iters, dtype):
     torch.manual_seed(1337)
     block_size = model_config.max_position_embeddings
     base_model_path = model_path(model_name)
-    new_model_path = checkpoint_path(model_name, id)
+    new_model_path = checkpoint_path(model_name, model_id)
 
     print(f"base:    {base_model_path}", file=sys.stderr)
     print(f"checkpoint: {new_model_path}", file=sys.stderr)

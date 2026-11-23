@@ -190,8 +190,8 @@ def check_entry(model_name):
             raise Exception(f"Input id {id} references the entry itself in {ledger_file}.")
 
 
-def pull_model(model_name, id=None):
-    """Pull model files defined by the entry id."""
+def pull_model(model_name, model_id=None):
+    """Pull model files defined by the model id."""
     ledger_base = os.environ.get("GOODWOOLF_LEDGER")
     if not ledger_base:
         raise ValueError("Environment variable GOODWOOLF_LEDGER must be set")
@@ -202,7 +202,7 @@ def pull_model(model_name, id=None):
     with open(ledger_file, "r") as f:
         entries = json.load(f)
 
-    entry = find_entry(entries, id=id, ops=[OP_RANDOMIZED, OP_AGGREGATED])
+    entry = find_entry(entries, id=model_id, ops=[OP_RANDOMIZED, OP_AGGREGATED])
     if not entry:
         raise Exception(f"Model hash not found in the ledger.")
 
@@ -223,9 +223,9 @@ def pull_model(model_name, id=None):
         download_file(f"{model_url}/{file}", f"{checkpoint_dir}/{file}", progress=True)
 
 
-def model_checkout(model_name, id):
+def model_checkout(model_name, model_id):
     """Check out a model checkpoint as the active model."""
-    source_dir = checkpoint_path(model_name, id)
+    source_dir = checkpoint_path(model_name, model_id)
     if not Path(source_dir).is_dir():
         raise FileNotFoundError(f"Model checkpoint not pulled: {source_dir}. Run pull first.")
     target_dir = model_path(model_name)

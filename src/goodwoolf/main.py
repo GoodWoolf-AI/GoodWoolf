@@ -48,22 +48,22 @@ def ledger(model_name, create, check):
 
 @main.command()
 @click.argument("model-name", required=True, help="Model name in format <vendor>/<model>.")
-@click.option("--id", required=False, metavar="ID", help="The model ledger entry id.")
-def pull(model_name, id):
+@click.option("--model-id", required=False, metavar="MODEL_ID", help="The model ledger entry id.")
+def pull(model_name, model_id):
     "Pull a model from the training ledger."
     try:
-        gw_ledger.pull_model(model_name, id)
+        gw_ledger.pull_model(model_name, model_id)
     except Exception as e:
         raise click.ClickException(str(e))
 
 
 @main.command()
 @click.argument("model-name", required=True, help="Model name in format <vendor>/<model>.")
-@click.option("--id", required=True, metavar="ID", help="The model ledger entry id.")
-def checkout(model_name, id):
+@click.option("--model-id", required=True, metavar="MODEL_ID", help="The model ledger entry id.")
+def checkout(model_name, model_id):
     "Check out a model checkpoint as the active model."
     try:
-        gw_ledger.model_checkout(model_name, id)
+        gw_ledger.model_checkout(model_name, model_id)
     except Exception as e:
         raise click.ClickException(str(e))
 
@@ -147,13 +147,13 @@ def chat(model_name, max_tokens, temperature, top_k, device):
 @main.command()
 @click.argument("model-name", required=True, help="Model name in format <vendor>/<model>.")
 @click.option("--data-name", required=True, metavar="DATASET", help="Dataset name (e.g. openai/gsm8k).")
-@click.option("--model-id", "id", required=True, metavar="ID", help="Model checkpoint id to merge.")
+@click.option("--model-id", required=True, metavar="MODEL_ID", help="Model checkpoint id to merge.")
 @click.option("--batch-size", type=int, default=8, help="Validation batch size.")
 @click.option("--eval-iters", type=int, default=100, help="Validation iteration count.")
 @click.option("--dtype", metavar="TYPE", default="bfloat16", help="Model runtime type.")
-def merge(model_name, data_name, id, batch_size, eval_iters, dtype):
+def merge(model_name, data_name, model_id, batch_size, eval_iters, dtype):
     """Merge a checkpoint into the active model."""
-    gw_models.merge(model_name, data_name, id, batch_size, eval_iters, dtype)
+    gw_models.merge(model_name, data_name, model_id, batch_size, eval_iters, dtype)
 
 
 @main.command(
