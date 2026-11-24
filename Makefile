@@ -1,3 +1,26 @@
+# Make sure a user-space gh install is found
+export PATH := $(HOME)/.local/bin:$(PATH)
+
+VERSION = $(shell python3 -c 'import pathlib,re; print(re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))')
+TAG      = v$(VERSION)
+REPO    ?= $(shell git remote get-url origin | sed -E 's#^(git@|ssh://git@|https://)[^:/]+[:/]##; s#\.git$$##')
+
+.PHONY: tick-version release check-gh
+tick-version:
+	@python3 -c 'import pathlib,re; p=pathlib.Path("pyproject.toml"); s=p.read_text(); m=re.search(r"(?m)^version = \"(\d+)\.(\d+)\.(\d+)\"", s); major,minor,patch=map(int,m.groups()); p.write_text(s[:m.start()]+f"version = \"{major}.{minor}.{patch+1}\""+s[m.end():])'
+	@python3 -c 'import pathlib,re; print("Version is now " + re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))'
+
+check-gh:
+	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found. Install the GitHub CLI first."; exit 1; }
+	@gh auth status >/dev/null 2>&1 || { echo "gh is not authenticated. Run 'gh auth login' or set GH_TOKEN."; exit 1; }
+
+release: check-gh
+	@test -f RELEASE.md || { echo "RELEASE.md not found."; exit 1; }
+	@test -z "$$(git status --porcelain)" || { echo "Working tree has uncommitted changes. Commit them first."; exit 1; }
+	@git rev-parse "$(TAG)" >/dev/null 2>&1 || git tag $(TAG)
+	git push origin $(TAG)
+	gh release create $(TAG) --repo $(REPO) --verify-tag --title "$(TAG)" --notes-file RELEASE.md
+
 # Setup Python environment
 .PHONY: setup
 setup:
