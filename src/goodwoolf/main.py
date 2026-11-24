@@ -33,8 +33,14 @@ def vendor(list_items, remote):
 
 @main.command()
 @click.argument("model-name", required=True, help="Model name in format <vendor>/<model>.")
-@click.option("--create", required=False, metavar="TYPE", help="Create a new ledger entry with an operator TYPE.")
-@click.option("--check", is_flag=True, default=False, help="Validate the ledger entry agains the local model.")
+@click.option(
+    "--create",
+    required=False,
+    metavar="STAGE",
+    type=click.Choice(gw_ledger.LEDGER_OPERATORS, case_sensitive=False),
+    help="Create a new ledger entry with a stage-code operator STAGE.",
+)
+@click.option("--check", is_flag=True, default=False, help="Validate the ledger entry against the local model.")
 def ledger(model_name, create, check):
     "Update the model training ledger."
     try:

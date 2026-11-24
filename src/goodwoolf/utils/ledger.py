@@ -26,16 +26,18 @@ LEDGER_ENTRY = {
     "operator": None
 }
 
-OP_RANDOMIZED = "randomized"
-OP_PRETRAINED = "pretrained"
-OP_FINETUNED = "finetuned"
-OP_AGGREGATED = "aggregated"
+OP_RND = "RND"  # Randomized
+OP_NTP = "NTP"  # Next Token Prediction
+OP_SFT = "SFT"  # Supervised Fine-Tuning
+OP_RL = "RL"  # Reinforcement Learning
+OP_AGG = "AGG"  # Aggregation
 
 LEDGER_OPERATORS = [
-    OP_RANDOMIZED,
-    OP_PRETRAINED,
-    OP_FINETUNED,
-    OP_AGGREGATED,
+    OP_RND,
+    OP_NTP,
+    OP_SFT,
+    OP_RL,
+    OP_AGG,
 ]
 
 LEDGER_FILE_NAME = "training.ledger.json"
@@ -91,6 +93,9 @@ def find_entry(entries, id=None, ops=None):
 
 def create_entry(model_name: str, operator: str):
     """Add an entry to the training ledger."""
+    if operator not in LEDGER_OPERATORS:
+        raise ValueError(f"Invalid ledger operator {operator}.")
+
     ledger_base = os.environ.get("GOODWOOLF_LEDGER")
     if not ledger_base:
         raise ValueError("Environment variable GOODWOOLF_LEDGER must be set")
@@ -121,8 +126,8 @@ def create_entry(model_name: str, operator: str):
             entries = [entries]
         if find_entry(entries, id=model_hash):
             raise Exception(f"Entry id {model_hash} already exists in {ledger_file}.")
-        if operator == OP_RANDOMIZED and find_entry(entries, ops=[OP_RANDOMIZED]):
-            raise Exception(f"Entry operator {OP_RANDOMIZED} already exists in {ledger_file}.")
+        if operator == OP_RND and find_entry(entries, ops=[OP_RND]):
+            raise Exception(f"Entry operator {OP_RND} already exists in {ledger_file}.")
         entries.append(entry)
     else:
         entries = [entry]
@@ -134,7 +139,7 @@ def create_entry(model_name: str, operator: str):
 
 
 def check_entry(model_name):
-    """Check if the entry id matched hash of the wrights."""
+    """Check if the entry id matches the hash of the weights."""
     ledger_base = os.environ.get("GOODWOOLF_LEDGER")
     if not ledger_base:
         raise ValueError("Environment variable GOODWOOLF_LEDGER must be set")
@@ -161,7 +166,7 @@ def check_entry(model_name):
     if not resolve_url(model_url):
         raise Exception(f"Invalid entry URL {model_url} in {ledger_file}.")
 
-    # check weights agains the model files
+    # check weights against the model files
     if model_files != entry["weights"]:
         raise Exception(f"Model file names do not match ledger weight names.")
 
@@ -172,13 +177,11 @@ def check_entry(model_name):
 
     # check inputs
     inputs = entry["inputs"]
-    if op == "randomized" and len(inputs) != 0:
+    if op == OP_RND and len(inputs) != 0:
         raise Exception(f"Operator {op} requires no inputs in {ledger_file}.")
-    if op == "pretrained" and len(inputs) != 1:
+    if op in (OP_NTP, OP_SFT, OP_RL) and len(inputs) != 1:
         raise Exception(f"Operator {op} requires a single input in {ledger_file}.")
-    if op == "finetuned" and len(inputs) != 1:
-        raise Exception(f"Operator {op} requires a single input in {ledger_file}.")
-    if op == "aggregated" and len(inputs) > 1:
+    if op == OP_AGG and len(inputs) < 2:
         raise Exception(f"Operator {op} requires at least two inputs in {ledger_file}.")
 
     # check input references
@@ -202,7 +205,7 @@ def pull_model(model_name, model_id=None):
     with open(ledger_file, "r") as f:
         entries = json.load(f)
 
-    entry = find_entry(entries, id=model_id, ops=[OP_RANDOMIZED, OP_AGGREGATED])
+    entry = find_entry(entries, id=model_id, ops=[OP_RND, OP_AGG])
     if not entry:
         raise Exception(f"Model hash not found in the ledger.")
 
