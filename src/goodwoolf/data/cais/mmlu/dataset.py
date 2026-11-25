@@ -1,4 +1,4 @@
-"""Prepare MMLU for training in nanochat conversation format.
+"""Prepare MMLU for training in GoodWoolf conversation format.
 
 MMLU is a multiple-choice knowledge benchmark across 57 subjects. It is
 prepared once and used by SFT (and evaluation). The records are
@@ -13,7 +13,7 @@ Each output line is one example::
      "subject": "college_biology",
      "source": "mmlu"}
 
-``messages`` mirrors ``nanochat/tasks/mmlu.py``: the user message renders the
+``messages`` uses GoodWoolf's conversation format: the user message renders the
 question with its four choices via ``render_mc`` and the assistant message is
 the answer letter.
 
@@ -72,7 +72,7 @@ def fetch():
 
 
 def _conversation(row):
-    """Build one nanochat conversation record from an MMLU row."""
+    """Build one GoodWoolf conversation record from an MMLU row."""
     answer = LETTERS[row["answer"]]
     return {
         "messages": [
@@ -118,7 +118,7 @@ def metadata(split=None):
         print(f"Total chars:     {total_chars:,}")
         if count:
             print(f"Avg chars/ex:    {total_chars / count:,.1f}")
-        print(f"Format:          nanochat conversation messages (SFT categorical)")
+        print(f"Format:          GoodWoolf conversation messages (SFT categorical)")
 
 
 def sample(start=0, count=1, split=None):
@@ -131,7 +131,7 @@ def sample(start=0, count=1, split=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Prepare MMLU in nanochat conversation format")
+    parser = argparse.ArgumentParser(description="Prepare MMLU in GoodWoolf conversation format")
     parser.add_argument("--fetch", action="store_true", help="Download the source dataset.")
     parser.add_argument("--prepare", action="store_true", help="Write the prepared dataset.")
     parser.add_argument("--metadata", action="store_true", help="Print dataset statistics and splits.")

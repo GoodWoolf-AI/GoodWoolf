@@ -10,7 +10,7 @@ tokenizer-independent; the model tokenizer is applied at training time, when it
 renders the conversation into tokens and builds the assistant loss mask.
 
 Like the pretraining datasets, MMLU is tokenizer-independent. It is stored as
-JSONL in the message format used by nanochat (`nanochat/tasks/mmlu.py`).
+JSONL in GoodWoolf's message format.
 
 ## Prepare the data
 
@@ -47,7 +47,7 @@ Each line is one example:
  "source": "mmlu"}
 ```
 
-`messages` mirrors nanochat's conversation format: the user message renders the
+`messages` uses GoodWoolf's conversation format: the user message renders the
 question with its four choices via `render_mc` and the assistant message is the
 answer letter. `subject` and `letters` are kept for reference.
 

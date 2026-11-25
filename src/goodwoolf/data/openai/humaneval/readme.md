@@ -11,7 +11,7 @@ tokenizer-independent; the model tokenizer is applied at training time, when it
 renders the conversation into tokens and builds the assistant loss mask.
 
 Like the pretraining datasets, HumanEval is tokenizer-independent. It is stored
-as JSONL in the message format used by nanochat (`nanochat/tasks/humaneval.py`).
+as JSONL in GoodWoolf's message format.
 
 ## Prepare the data
 
@@ -46,7 +46,7 @@ Each line is one problem:
  "source": "humaneval"}
 ```
 
-`messages` mirrors nanochat's conversation format: the user message is the
+`messages` uses GoodWoolf's conversation format: the user message is the
 prompt and the assistant message is the complete solution. `entry_point` and
 `test` are kept so a completion can be executed and checked at evaluation time.
 

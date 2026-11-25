@@ -1,8 +1,8 @@
-"""Prepare GSM8K for training in nanochat conversation format.
+"""Prepare GSM8K for training in GoodWoolf conversation format.
 
 GSM8K is prepared once and used by both SFT and RL. The records are
 tokenizer-independent; the model tokenizer is applied at training time, when
-nanochat renders the conversation (roles, tool calls and the assistant loss
+GoodWoolf renders the conversation (roles, tool calls and the assistant loss
 mask) and when RL extracts the verifiable ``#### <answer>`` reward.
 
 Each output line is one problem::
@@ -15,11 +15,10 @@ Each output line is one problem::
      "answer": <final numeric answer, e.g. "72">,
      "source": "gsm8k"
 
-``messages`` mirrors ``nanochat/tasks/gsm8k.py``: calculator annotations
+``messages`` uses GoodWoolf's conversation format: calculator annotations
 (``<<expr=result>>``) become tool-call parts, so the tokenizer can render the
-same ``<|python_start|>`` / ``<|output_start|>`` structure used by nanochat
-during SFT and RL. ``answer`` is the number after ``####`` used by the
-verifiable RL reward.
+same ``<|python_start|>`` / ``<|output_start|>`` structure during SFT and RL.
+``answer`` is the number after ``####`` used by the verifiable RL reward.
 
 The fetched splits are preserved: each is written to its own ``<split>.parquet``
 (``train.parquet``, ``test.parquet``). ``load_data(split)`` loads a single split and
@@ -52,10 +51,10 @@ SOURCES = tuple((DATASET_CONFIG, split) for split in SPLITS)
 # Every Hub dataset has an auto-generated parquet export on this revision.
 PARQUET_REVISION = "refs/convert/parquet"
 
-# Same answer extraction as nanochat: the number after the ``####`` marker.
+# Extract the number after the ``####`` marker.
 ANSWER_RE = re.compile(r"####\s*(-?[0-9][0-9,]*(?:\.[0-9]+)?)")
 
-# Same calculator annotations as nanochat.
+# GoodWoolf calculator annotations.
 CALC_RE = re.compile(r"(<<[^>]+>>)")
 
 
@@ -82,7 +81,7 @@ def prepare():
 
 
 def _conversation(row):
-    """Build one nanochat conversation record from a GSM8K row."""
+    """Build one GoodWoolf conversation record from a GSM8K row."""
     question = row["question"].strip()
     return {
         "messages": [
@@ -102,12 +101,12 @@ def _final_answer(answer):
 
 
 def _split_solution(answer):
-    """Split GSM8K calculator annotations (``<<expr=result>>``) into nanochat
+    """Split GSM8K calculator annotations (``<<expr=result>>``) into GoodWoolf
     assistant content parts.
 
     The GSM8K dataset embeds calculator expressions as ``<<expr=result>>`` markers.
     This function parses those markers and returns a list of part dictionaries
-    matching the nanochat format::
+    matching the GoodWoolf format::
 
         [{"type": "python",   "text": "expr"},
          {"type": "python_output", "text": "result"}]
@@ -174,7 +173,7 @@ def metadata(split=None):
         print(f"Total chars:     {total_chars:,}")
         if count:
             print(f"Avg chars/prob:  {total_chars / count:,.1f}")
-        print(f"Format:          nanochat conversation messages (SFT + verifiable RL answer)")
+        print(f"Format:          GoodWoolf conversation messages (SFT + verifiable RL answer)")
 
 
 def sample(start=0, count=1, split=None):
@@ -187,7 +186,7 @@ def sample(start=0, count=1, split=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Prepare GSM8K in nanochat conversation format")
+    parser = argparse.ArgumentParser(description="Prepare GSM8K in GoodWoolf conversation format")
     parser.add_argument("--fetch", action="store_true", help="Download the source dataset.")
     parser.add_argument("--prepare", action="store_true", help="Write the prepared dataset.")
     parser.add_argument("--metadata", action="store_true", help="Print dataset statistics and splits.")

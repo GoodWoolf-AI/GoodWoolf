@@ -1,4 +1,4 @@
-"""Prepare SmolTalk for training in nanochat conversation format.
+"""Prepare SmolTalk for training in GoodWoolf conversation format.
 
 SmolTalk (``HuggingFaceTB/smol-smoltalk``) is a general conversational dataset,
 used by SFT as the "general chat" part of the mixture. The records are
@@ -11,7 +11,7 @@ Each output line is one conversation::
                   {"role": "assistant", "content": ...}],
      "source": "smoltalk"}
 
-``messages`` mirrors ``nanochat/tasks/smoltalk.py``: an optional system message
+``messages`` uses GoodWoolf's conversation format: an optional system message
 followed by alternating user/assistant turns, each with string content.
 
 The fetched splits are preserved: each is written to its own ``<split>.parquet``
@@ -67,7 +67,7 @@ def fetch():
 
 
 def _conversation(row):
-    """Build one nanochat conversation record from a SmolTalk row."""
+    """Build one GoodWoolf conversation record from a SmolTalk row."""
     return {
         "messages": row["messages"],
         "source": "smoltalk",
@@ -106,7 +106,7 @@ def metadata(split=None):
         print(f"Total chars:     {total_chars:,}")
         if count:
             print(f"Avg chars/conv:  {total_chars / count:,.1f}")
-        print(f"Format:          nanochat conversation messages (SFT chat)")
+        print(f"Format:          GoodWoolf conversation messages (SFT chat)")
 
 
 def sample(start=0, count=1, split=None):
@@ -119,7 +119,7 @@ def sample(start=0, count=1, split=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Prepare SmolTalk in nanochat conversation format")
+    parser = argparse.ArgumentParser(description="Prepare SmolTalk in GoodWoolf conversation format")
     parser.add_argument("--fetch", action="store_true", help="Download the source dataset.")
     parser.add_argument("--prepare", action="store_true", help="Write the prepared dataset.")
     parser.add_argument("--metadata", action="store_true", help="Print dataset statistics and splits.")

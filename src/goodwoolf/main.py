@@ -9,6 +9,7 @@ import sys
 import goodwoolf.utils.common as gw_common
 import goodwoolf.utils.models as gw_models
 import goodwoolf.utils.ledger as gw_ledger
+import goodwoolf.utils.machine as gw_machine
 from goodwoolf.utils.system import import_file, model_path
 
 TRAIN_STAGES = ("TOK", "NTP", "SFT", "RL")
@@ -226,6 +227,225 @@ def save(model_name, load_path):
     if load_path is None:
         load_path = save_path + "/chpt.pt"
     gw_models.save_model(model_name, save_path, load_path)
+
+
+def _run_action(action, **kwargs):
+    try:
+        action(**kwargs)
+    except Exception as e:
+        raise click.ClickException(str(e))
+
+
+@main.group()
+def machine():
+    """Manage a Podman machine."""
+
+
+@machine.command("check")
+def machine_check():
+    """Check Podman machine prerequisites."""
+    _run_action(gw_machine.check_machine)
+
+
+@machine.command("setup")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine name.",
+)
+@click.option(
+    "--cpus",
+    type=int,
+    default=gw_machine.DEFAULT_CPUS,
+    show_default=True,
+    help="Machine CPU count.",
+)
+@click.option("--disk-size", type=int, required=True, help="Machine disk size in GiB.")
+@click.option("--ram-size", type=int, required=True, help="Machine memory in MiB.")
+@click.option("--swap-size", type=int, required=True, help="Swap file size in GiB.")
+def machine_setup(machine_name, cpus, disk_size, ram_size, swap_size):
+    """Create and configure a Podman machine."""
+    _run_action(
+        gw_machine.setup_machine,
+        machine_name=machine_name,
+        cpus=cpus,
+        disk_size=disk_size,
+        ram_size=ram_size,
+        swap_size=swap_size,
+    )
+
+
+@machine.command("open")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine name.",
+)
+def machine_open(machine_name):
+    """Open a shell in a Podman machine."""
+    _run_action(gw_machine.open_machine, machine_name=machine_name)
+
+
+@machine.command("clear")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine name.",
+)
+def machine_clear(machine_name):
+    """Remove a Podman machine."""
+    _run_action(gw_machine.clear_machine, machine_name=machine_name)
+
+
+@main.group()
+def container():
+    """Manage a Podman container."""
+
+
+@container.command("create")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine connection.",
+)
+@click.option(
+    "--container-name",
+    default=gw_machine.DEFAULT_CONTAINER_NAME,
+    show_default=True,
+    help="Container name.",
+)
+@click.option(
+    "--image",
+    default=gw_machine.DEFAULT_IMAGE,
+    show_default=True,
+    help="Container image.",
+)
+@click.option(
+    "--host-dir",
+    default=".",
+    show_default=True,
+    help="Host directory mounted into the container.",
+)
+@click.option(
+    "--container-dir",
+    default=gw_machine.DEFAULT_CONTAINER_DIR,
+    show_default=True,
+    help="Container mount point for the host directory.",
+)
+@click.option("--ram-size", type=int, required=True, help="Container memory in MiB.")
+@click.option("--swap-size", type=int, required=True, help="Container swap in GiB.")
+def container_create(
+    machine_name,
+    container_name,
+    image,
+    host_dir,
+    container_dir,
+    ram_size,
+    swap_size,
+):
+    """Create a Podman container."""
+    _run_action(
+        gw_machine.create_container,
+        machine_name=machine_name,
+        container_name=container_name,
+        image=image,
+        host_dir=host_dir,
+        container_dir=container_dir,
+        ram_size=ram_size,
+        swap_size=swap_size,
+    )
+
+
+@container.command("start")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine connection.",
+)
+@click.option(
+    "--container-name",
+    default=gw_machine.DEFAULT_CONTAINER_NAME,
+    show_default=True,
+    help="Container name.",
+)
+def container_start(machine_name, container_name):
+    """Start a Podman container."""
+    _run_action(
+        gw_machine.start_container,
+        machine_name=machine_name,
+        container_name=container_name,
+    )
+
+
+@container.command("stop")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine connection.",
+)
+@click.option(
+    "--container-name",
+    default=gw_machine.DEFAULT_CONTAINER_NAME,
+    show_default=True,
+    help="Container name.",
+)
+def container_stop(machine_name, container_name):
+    """Stop a Podman container."""
+    _run_action(
+        gw_machine.stop_container,
+        machine_name=machine_name,
+        container_name=container_name,
+    )
+
+
+@container.command("open")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine connection.",
+)
+@click.option(
+    "--container-name",
+    default=gw_machine.DEFAULT_CONTAINER_NAME,
+    show_default=True,
+    help="Container name.",
+)
+def container_open(machine_name, container_name):
+    """Open an interactive shell in a Podman container."""
+    _run_action(
+        gw_machine.open_container,
+        machine_name=machine_name,
+        container_name=container_name,
+    )
+
+
+@container.command("remove")
+@click.option(
+    "--machine-name",
+    default=gw_machine.DEFAULT_MACHINE_NAME,
+    show_default=True,
+    help="Podman machine connection.",
+)
+@click.option(
+    "--container-name",
+    default=gw_machine.DEFAULT_CONTAINER_NAME,
+    show_default=True,
+    help="Container name.",
+)
+def container_remove(machine_name, container_name):
+    """Remove a Podman container."""
+    _run_action(
+        gw_machine.remove_container,
+        machine_name=machine_name,
+        container_name=container_name,
+    )
 
 
 if __name__ == "__main__":

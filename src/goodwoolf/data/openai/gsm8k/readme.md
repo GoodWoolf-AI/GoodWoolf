@@ -11,8 +11,7 @@ tokenizer-independent; the model tokenizer is applied at training time, when it
 renders the conversation into tokens and builds the assistant loss mask.
 
 Like the pretraining datasets, GSM8K is tokenizer-independent. It is stored as
-JSONL in the message/tool-call format used by nanochat
-(`nanochat/tasks/gsm8k.py`).
+JSONL in GoodWoolf's message/tool-call format.
 
 ## Prepare the data
 
@@ -52,14 +51,13 @@ Each line is one problem:
  "source": "gsm8k"}
 ```
 
-`messages` mirrors nanochat's conversation format, so nanochat's
-`render_conversation` produces the same special-token structure and loss mask
-during SFT. `python` / `python_output` parts are the calculator tool calls
-parsed from `<<expr=result>>`.
+`messages` uses GoodWoolf's conversation format, producing the same
+special-token structure and loss mask during SFT. `python` / `python_output`
+parts are the calculator tool calls parsed from `<<expr=result>>`.
 
 The same record is used for RL: `render_for_completion` keeps the user/prompt
 part, and `answer` (the number after `####`) is the target for the verifiable
-reward, matching nanochat's `GSM8K.reward`.
+reward.
 
 ## Splits
 

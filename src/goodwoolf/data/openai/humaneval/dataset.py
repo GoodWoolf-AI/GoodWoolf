@@ -1,4 +1,4 @@
-"""Prepare HumanEval for training in nanochat conversation format.
+"""Prepare HumanEval for training in GoodWoolf conversation format.
 
 HumanEval is a Python coding benchmark. It is prepared once and used by SFT
 (and evaluation). The records are tokenizer-independent; the model tokenizer is
@@ -12,7 +12,7 @@ Each output line is one problem::
      "test": <test cases>,
      "source": "humaneval"}
 
-``messages`` mirrors ``nanochat/tasks/humaneval.py``: the user message is the
+``messages`` uses GoodWoolf's conversation format: the user message is the
 function signature/prefix and the assistant message is the complete solution.
 ``entry_point`` and ``test`` are kept so the completion can be executed and
 checked at evaluation time.
@@ -68,7 +68,7 @@ def fetch():
 
 
 def _conversation(row):
-    """Build one nanochat conversation record from a HumanEval row."""
+    """Build one GoodWoolf conversation record from a HumanEval row."""
     prompt = row["prompt"]
     solution = row["canonical_solution"]
     return {
@@ -111,7 +111,7 @@ def metadata(split=None):
         print(f"Total chars:     {total_chars:,}")
         if count:
             print(f"Avg chars/prob:  {total_chars / count:,.1f}")
-        print(f"Format:          nanochat conversation messages (SFT code, exec-checked)")
+        print(f"Format:          GoodWoolf conversation messages (SFT code, exec-checked)")
 
 
 def sample(start=0, count=1, split=None):
@@ -124,7 +124,7 @@ def sample(start=0, count=1, split=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Prepare HumanEval in nanochat conversation format")
+    parser = argparse.ArgumentParser(description="Prepare HumanEval in GoodWoolf conversation format")
     parser.add_argument("--fetch", action="store_true", help="Download the source dataset.")
     parser.add_argument("--prepare", action="store_true", help="Write the prepared dataset.")
     parser.add_argument("--metadata", action="store_true", help="Print dataset statistics and splits.")

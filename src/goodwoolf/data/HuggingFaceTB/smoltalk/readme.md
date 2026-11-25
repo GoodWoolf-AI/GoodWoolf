@@ -11,7 +11,7 @@ model tokenizer is applied at training time, when it renders the conversation
 into tokens and builds the assistant loss mask.
 
 Like the pretraining datasets, SmolTalk is tokenizer-independent. It is stored
-as JSONL in the message format used by nanochat (`nanochat/tasks/smoltalk.py`).
+as JSONL in GoodWoolf's message format.
 
 ## Prepare the data
 
@@ -45,9 +45,8 @@ Each line is one conversation:
  "source": "smoltalk"}
 ```
 
-`messages` mirrors nanochat's conversation format, so nanochat's
-`render_conversation` produces the same special-token structure and loss mask
-during SFT.
+`messages` uses GoodWoolf's conversation format, producing the same
+special-token structure and loss mask during SFT.
 
 ## Splits
 

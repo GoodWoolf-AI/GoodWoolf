@@ -2,7 +2,7 @@ import torch
 
 
 def render_mc(question, letters, choices):
-    """Render a multiple-choice question the way nanochat does.
+    """Render a multiple-choice question with one labeled choice per line.
 
     The letter follows the choice with no whitespace (``- choice=A``) so the
     assistant target ``A`` is the exact same token as in the prompt.

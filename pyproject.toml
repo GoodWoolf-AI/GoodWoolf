@@ -9,6 +9,7 @@ dependencies = [
     "datasets>=5.0.0",
     "huggingface-hub>=0.25.0",
     "numpy>=2.4.6",
+    "podman>=5.8.0",
     "rustbpe>=0.1.0",
     "tiktoken>=0.13.0",
     "torch>=2.12.0",
