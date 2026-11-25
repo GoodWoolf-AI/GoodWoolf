@@ -352,9 +352,9 @@ def _container_stop(args):
 
 
 # ============================================================
-# CONTAINER > OPEN
+# CONTAINER > SHELL
 # ============================================================
-def _container_open(args):
+def _container_shell(args):
     _run_action(
         gw_machine.open_container,
         machine_name=args.machine_name,
@@ -645,7 +645,7 @@ def build_parser():
     for name, description, handler in (
         ("start", "Start a Podman container.", _container_start),
         ("stop", "Stop a Podman container.", _container_stop),
-        ("open", "Open an interactive shell in a Podman container.", _container_open),
+        ("shell", "Open an interactive shell in a Podman container.", _container_shell),
         ("remove", "Remove a Podman container.", _container_remove),
     ):
         subparser = container_commands.add_parser(name, help=description)
