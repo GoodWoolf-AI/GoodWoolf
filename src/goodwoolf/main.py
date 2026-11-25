@@ -286,9 +286,9 @@ def _machine_check(args):
 
 
 # ============================================================
-# MACHINE > SETUP
+# MACHINE > CREATE
 # ============================================================
-def _machine_setup(args):
+def _machine_create(args):
     _run_action(
         gw_machine.setup_machine,
         machine_name=args.machine_name,
@@ -307,9 +307,9 @@ def _machine_open(args):
 
 
 # ============================================================
-# MACHINE > CLEAR
+# MACHINE > REMOVE
 # ============================================================
-def _machine_clear(args):
+def _machine_remove(args):
     _run_action(gw_machine.clear_machine, machine_name=args.machine_name)
 
 
@@ -603,21 +603,21 @@ def build_parser():
     machine_check = machine_commands.add_parser("check", help="Check Podman machine prerequisites.")
     machine_check.set_defaults(func=_machine_check)
 
-    machine_setup = machine_commands.add_parser("setup", help="Create and configure a Podman machine.")
-    _add_machine_name_option(machine_setup, "Podman machine name.")
-    machine_setup.add_argument("--cpus", type=int, default=gw_machine.DEFAULT_CPUS, help="Machine CPU count.")
-    machine_setup.add_argument("--disk-size", type=int, required=True, help="Machine disk size in GiB.")
-    machine_setup.add_argument("--ram-size", type=int, required=True, help="Machine memory in MiB.")
-    machine_setup.add_argument("--swap-size", type=int, required=True, help="Swap file size in GiB.")
-    machine_setup.set_defaults(func=_machine_setup)
+    machine_create = machine_commands.add_parser("create", help="Create and configure a Podman machine.")
+    _add_machine_name_option(machine_create, "Podman machine name.")
+    machine_create.add_argument("--cpus", type=int, default=gw_machine.DEFAULT_CPUS, help="Machine CPU count.")
+    machine_create.add_argument("--disk-size", type=int, required=True, help="Machine disk size in GiB.")
+    machine_create.add_argument("--ram-size", type=int, required=True, help="Machine memory in MiB.")
+    machine_create.add_argument("--swap-size", type=int, required=True, help="Swap file size in GiB.")
+    machine_create.set_defaults(func=_machine_create)
 
     machine_open = machine_commands.add_parser("open", help="Open a shell in a Podman machine.")
     _add_machine_name_option(machine_open, "Podman machine name.")
     machine_open.set_defaults(func=_machine_open)
 
-    machine_clear = machine_commands.add_parser("clear", help="Remove a Podman machine.")
-    _add_machine_name_option(machine_clear, "Podman machine name.")
-    machine_clear.set_defaults(func=_machine_clear)
+    machine_remove = machine_commands.add_parser("remove", help="Remove a Podman machine.")
+    _add_machine_name_option(machine_remove, "Podman machine name.")
+    machine_remove.set_defaults(func=_machine_remove)
 
     # CONTAINER
     container = commands.add_parser("container", help="Manage a Podman container.")
