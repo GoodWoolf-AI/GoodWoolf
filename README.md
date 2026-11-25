@@ -43,8 +43,8 @@ Learn more by following the online documentation:
 
 - [Get Started](https://docs.goodwoolf.ai/)
   - [Introduction](https://docs.goodwoolf.ai/introduction)
-  - [Supported Models](#supported-models)
-  - [Supported Datasets](#supported-datasets)
+  - [Supported Models](https://docs.goodwoolf.ai/get-started/supported-models)
+  - [Supported Datasets](https://docs.goodwoolf.ai/get-started/supported-datasets)
 - [Features](https://docs.goodwoolf.ai/category/features)
   - [Training Process](https://docs.goodwoolf.ai/features/training-process)
   - [Training Ledger](https://docs.goodwoolf.ai/features/training-ledger)

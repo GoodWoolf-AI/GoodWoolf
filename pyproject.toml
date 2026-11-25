@@ -3,17 +3,17 @@ name = "goodwoolf"
 version = "0.1.0"
 description = "Building foundation models collaboratively on commodity hardware."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
-    "datasets>=5.0.0",
-    "huggingface-hub>=0.25.0",
-    "numpy>=2.4.6",
+    "datasets>=5.2.0",
+    "huggingface-hub>=2.4.0",
+    "numpy>=2.2.6",
     "podman>=5.8.0",
     "rustbpe>=0.1.0",
-    "tiktoken>=0.13.0",
-    "torch>=2.12.0",
-    "tqdm>=4.68.1",
-    "transformers>=5.10.2",
+    "tiktoken>=0.14.0",
+    "torch>=2.14.1",
+    "tqdm>=4.70.1",
+    "transformers>=5.20.2",
 ]
 
 [tool.uv]
@@ -37,8 +37,8 @@ goodwoolf = [
 
 [project.optional-dependencies]
 publish = [
-    "twine>=5.0.0",
-    "wheel>=0.43.0",
+    "twine>=7.0.0",
+    "wheel>=0.48.0",
 ]
 
 [project.scripts]
