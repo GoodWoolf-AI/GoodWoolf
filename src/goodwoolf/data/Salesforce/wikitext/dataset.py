@@ -89,42 +89,43 @@ def sample(start=0, count=1, split=None):
             print()
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Prepare WikiText-2 as parquet text")
-    parser.add_argument("--fetch", action="store_true", help="Download the source dataset.")
-    parser.add_argument("--prepare", action="store_true", help="Write text parquet split files.")
-    parser.add_argument("--metadata", action="store_true", help="Print dataset statistics and splits.")
-    parser.add_argument(
-        "--sample",
-        nargs=2,
-        type=int,
-        metavar=("START", "COUNT"),
-        default=None,
-        help="Print COUNT samples starting at START.",
-    )
-    parser.add_argument(
+def main(argv=None, prog=None):
+    parser = argparse.ArgumentParser(prog=prog, description="Prepare WikiText-2 as parquet text")
+    actions = parser.add_subparsers(dest="action")
+
+    actions.add_parser("fetch", help="Download the source dataset.")
+    actions.add_parser("prepare", help="Write text parquet split files.")
+
+    metadata_parser = actions.add_parser("metadata", help="Print dataset statistics and splits.")
+    metadata_parser.add_argument(
         "--split",
+        choices=SPLITS,
         default=None,
         help=f"Split to inspect: {', '.join(SPLITS)} (default: all).",
     )
+
+    sample_parser = actions.add_parser("sample", help="Print COUNT samples starting at START.")
+    sample_parser.add_argument("start", nargs="?", type=int, default=0)
+    sample_parser.add_argument("count", nargs="?", type=int, default=1)
+    sample_parser.add_argument(
+        "--split",
+        choices=SPLITS,
+        default=None,
+        help=f"Split to inspect: {', '.join(SPLITS)} (default: all).",
+    )
+
     args = parser.parse_args(argv)
-
-    sample_requested = args.sample is not None
-    no_action = not (args.fetch or args.prepare or args.metadata or sample_requested)
-    if no_action:
-        args.fetch = True
-        args.prepare = True
-
-    if args.fetch:
+    if args.action is None:
+        parser.print_help()
+        return
+    if args.action == "fetch":
         fetch()
-    if args.prepare:
+    elif args.action == "prepare":
         prepare()
-    if args.prepare or args.metadata:
+    elif args.action == "metadata":
         metadata(args.split)
-    if sample_requested:
-        sample(*args.sample, split=args.split)
-    elif no_action:
-        sample(0, 1, split=args.split)
+    else:
+        sample(args.start, args.count, split=args.split)
 
 
 if __name__ == "__main__":

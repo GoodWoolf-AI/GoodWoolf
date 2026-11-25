@@ -646,7 +646,6 @@ name = "goodwoolf"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "click" },
     { name = "datasets" },
     { name = "huggingface-hub" },
     { name = "numpy" },
@@ -666,7 +665,6 @@ publish = [
 
 [package.metadata]
 requires-dist = [
-    { name = "click", specifier = ">=8.5.0" },
     { name = "datasets", specifier = ">=5.0.0" },
     { name = "huggingface-hub", specifier = ">=0.25.0" },
     { name = "numpy", specifier = ">=2.4.6" },

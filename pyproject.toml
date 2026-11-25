@@ -5,7 +5,6 @@ description = "Building foundation models collaboratively on commodity hardware.
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "click>=8.5.0",
     "datasets>=5.0.0",
     "huggingface-hub>=0.25.0",
     "numpy>=2.4.6",
