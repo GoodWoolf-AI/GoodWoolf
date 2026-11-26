@@ -9,10 +9,6 @@ DEFAULT_CONNECTION_NAME = "goodwoolf-machine"
 DEFAULT_CONTAINER_NAME = "goodwoolf"
 DEFAULT_IMAGE = "docker.io/library/ubuntu"
 DEFAULT_CONTAINER_DIR = "/workspace"
-DEFAULT_CPUS = 2
-DEFAULT_MEMORY = 4
-DEFAULT_DISK_SIZE = 100
-DEFAULT_SWAP_SIZE = 90
 
 
 def run_podman(*args, check=True, capture_output=False):
@@ -21,27 +17,18 @@ def run_podman(*args, check=True, capture_output=False):
     return subprocess.run(command, check=check, capture_output=capture_output, text=True)
 
 
-def machine_create(
-    cpus=DEFAULT_CPUS,
-    disk_size=DEFAULT_DISK_SIZE,
-    memory=DEFAULT_MEMORY,
-    swap_size=DEFAULT_SWAP_SIZE,
-):
-    if cpus is None or disk_size is None or memory is None or swap_size is None:
-        raise RuntimeError("--cpus, --disk-size, --memory, and --swap-size are required")
-    run_podman(
-        "machine",
-        "init",
-        "--cpus",
-        cpus,
-        "--memory",
-        memory * 1024,
-        "--swap",
-        swap_size * 1024,
-        "--disk-size",
-        disk_size,
-        DEFAULT_MACHINE_NAME,
-    )
+def machine_create(cpus=None, mem=None, disk=None, size=None):
+    args = ["machine", "init"]
+    if cpus is not None:
+        args.extend(["--cpus", cpus])
+    if mem is not None:
+        args.extend(["--memory", mem * 1024])
+    if size is not None:
+        args.extend(["--swap", size * 1024])
+    if disk is not None:
+        args.extend(["--disk-size", disk])
+    args.append(DEFAULT_MACHINE_NAME)
+    run_podman(*args)
 
 
 def machine_start():
@@ -60,36 +47,28 @@ def machine_remove():
     run_podman("machine", "rm", "-f", DEFAULT_MACHINE_NAME)
 
 
-def container_create(
-    cpus=DEFAULT_CPUS,
-    disk_size=DEFAULT_DISK_SIZE,
-    memory=DEFAULT_MEMORY,
-    swap_size=DEFAULT_SWAP_SIZE,
-):
-    if cpus is None or disk_size is None or memory is None or swap_size is None:
-        raise RuntimeError("--cpus, --disk-size, --memory, and --swap-size are required")
-    run_podman(
-        "--connection",
-        DEFAULT_CONNECTION_NAME,
-        "create",
-        "--cpus",
-        cpus,
-        "--name",
-        DEFAULT_CONTAINER_NAME,
-        "--volume",
-        f"{Path.cwd()}:{DEFAULT_CONTAINER_DIR}",
-        "--workdir",
-        DEFAULT_CONTAINER_DIR,
-        "--memory",
-        f"{memory * 1024}m",
-        "--memory-swap",
-        f"{(memory + swap_size) * 1024}m",
-        "--storage-opt",
-        f"size={disk_size}G",
-        "--tty",
-        "--interactive",
-        DEFAULT_IMAGE,
+def container_create(cpus=None, mem=None, disk=None, size=None):
+    args = ["--connection", DEFAULT_CONNECTION_NAME, "create"]
+    if cpus is not None:
+        args.extend(["--cpus", cpus])
+    args.extend(
+        [
+            "--name",
+            DEFAULT_CONTAINER_NAME,
+            "--volume",
+            f"{Path.cwd()}:{DEFAULT_CONTAINER_DIR}",
+            "--workdir",
+            DEFAULT_CONTAINER_DIR,
+        ]
     )
+    if mem is not None:
+        args.extend(["--memory", f"{mem * 1024}m"])
+    if size is not None:
+        args.extend(["--memory-swap", f"{((mem or 0) + size) * 1024}m"])
+    if disk is not None:
+        args.extend(["--storage-opt", f"size={disk}G"])
+    args.extend(["--tty", "--interactive", DEFAULT_IMAGE])
+    run_podman(*args)
 
 
 def container_start():

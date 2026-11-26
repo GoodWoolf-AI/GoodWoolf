@@ -269,9 +269,9 @@ def _machine_create(args):
     _run_action(
         gw_machine.machine_create,
         cpus=args.cpus,
-        disk_size=args.disk_size,
-        memory=args.memory,
-        swap_size=args.swap_size,
+        mem=args.ram_size,
+        disk=args.disk_size,
+        size=args.swap_size,
     )
 
 
@@ -310,9 +310,9 @@ def _container_create(args):
     _run_action(
         gw_machine.container_create,
         cpus=args.cpus,
-        disk_size=args.disk_size,
-        memory=args.memory,
-        swap_size=args.swap_size,
+        mem=args.ram_size,
+        disk=args.disk_size,
+        size=args.swap_size,
     )
 
 
@@ -575,28 +575,26 @@ def build_parser():
     machine_create.add_argument(
         "--cpus",
         type=int,
-        default=gw_machine.DEFAULT_CPUS,
-        help=f"Machine CPU count (default: {gw_machine.DEFAULT_CPUS}).",
+        default=None,
+        help="Machine CPU count.",
     )
     machine_create.add_argument(
         "--disk-size",
         type=int,
-        default=gw_machine.DEFAULT_DISK_SIZE,
-        help=f"Machine disk size in GiB (default: {gw_machine.DEFAULT_DISK_SIZE}G).",
+        default=None,
+        help="Machine disk size in GiB.",
     )
     machine_create.add_argument(
-        "--memory",
         "--ram-size",
-        dest="memory",
         type=int,
-        default=gw_machine.DEFAULT_MEMORY,
-        help=f"Machine memory in GiB (default: {gw_machine.DEFAULT_MEMORY}G).",
+        default=None,
+        help="Machine memory in GiB.",
     )
     machine_create.add_argument(
         "--swap-size",
         type=int,
-        default=gw_machine.DEFAULT_SWAP_SIZE,
-        help=f"Machine swap in GiB (default: {gw_machine.DEFAULT_SWAP_SIZE}G).",
+        default=None,
+        help="Machine swap in GiB.",
     )
     machine_create.set_defaults(func=_machine_create)
 
@@ -625,28 +623,26 @@ def build_parser():
     container_create.add_argument(
         "--cpus",
         type=int,
-        default=gw_machine.DEFAULT_CPUS,
-        help=f"Container CPU count (default: {gw_machine.DEFAULT_CPUS}).",
+        default=None,
+        help="Container CPU count.",
     )
     container_create.add_argument(
         "--disk-size",
         type=int,
-        default=gw_machine.DEFAULT_DISK_SIZE,
-        help=f"Container disk size in GiB (default: {gw_machine.DEFAULT_DISK_SIZE}G).",
+        default=None,
+        help="Container disk size in GiB.",
     )
     container_create.add_argument(
-        "--memory",
         "--ram-size",
-        dest="memory",
         type=int,
-        default=gw_machine.DEFAULT_MEMORY,
-        help=f"Container memory in GiB (default: {gw_machine.DEFAULT_MEMORY}G).",
+        default=None,
+        help="Container memory in GiB.",
     )
     container_create.add_argument(
         "--swap-size",
         type=int,
-        default=gw_machine.DEFAULT_SWAP_SIZE,
-        help=f"Container swap in GiB (default: {gw_machine.DEFAULT_SWAP_SIZE}G).",
+        default=None,
+        help="Container swap in GiB.",
     )
     container_create.set_defaults(func=_container_create)
 
