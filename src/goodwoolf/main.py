@@ -276,6 +276,20 @@ def _machine_create(args):
 
 
 # ============================================================
+# MACHINE > START
+# ============================================================
+def _machine_start(args):
+    _run_action(gw_machine.machine_start)
+
+
+# ============================================================
+# MACHINE > STOP
+# ============================================================
+def _machine_stop(args):
+    _run_action(gw_machine.machine_stop)
+
+
+# ============================================================
 # MACHINE > SHELL
 # ============================================================
 def _machine_shell(args):
@@ -557,7 +571,7 @@ def build_parser():
         parser_class=CommandParser,
     )
 
-    machine_create = machine_commands.add_parser("create", help="Create and configure a Podman machine.")
+    machine_create = machine_commands.add_parser("create", help="Create a Podman machine.")
     machine_create.add_argument(
         "--cpus",
         type=int,
@@ -585,6 +599,12 @@ def build_parser():
         help=f"Machine swap in GiB (default: {gw_machine.DEFAULT_SWAP_SIZE}G).",
     )
     machine_create.set_defaults(func=_machine_create)
+
+    machine_start = machine_commands.add_parser("start", help="Start a Podman machine.")
+    machine_start.set_defaults(func=_machine_start)
+
+    machine_stop = machine_commands.add_parser("stop", help="Stop a Podman machine.")
+    machine_stop.set_defaults(func=_machine_stop)
 
     machine_shell = machine_commands.add_parser("shell", help="Open a shell in a Podman machine.")
     machine_shell.set_defaults(func=_machine_shell)

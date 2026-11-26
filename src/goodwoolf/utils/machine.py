@@ -15,8 +15,9 @@ DEFAULT_DISK_SIZE = 100
 DEFAULT_SWAP_SIZE = 90
 
 
-def run_cmd(*args, check=True, capture_output=False):
+def run_podman(*args, check=True, capture_output=False):
     command = ["podman", *[str(arg) for arg in args]]
+    print(" ".join(command))
     return subprocess.run(command, check=check, capture_output=capture_output, text=True)
 
 
@@ -28,7 +29,7 @@ def machine_create(
 ):
     if cpus is None or disk_size is None or memory is None or swap_size is None:
         raise RuntimeError("--cpus, --disk-size, --memory, and --swap-size are required")
-    run_cmd(
+    run_podman(
         "machine",
         "init",
         "--cpus",
@@ -39,17 +40,24 @@ def machine_create(
         swap_size * 1024,
         "--disk-size",
         disk_size,
-        "--now",
         DEFAULT_MACHINE_NAME,
     )
 
 
+def machine_start():
+    run_podman("machine", "start", DEFAULT_MACHINE_NAME)
+
+
+def machine_stop():
+    run_podman("machine", "stop", DEFAULT_MACHINE_NAME)
+
+
 def machine_shell():
-    run_cmd("machine", "ssh", DEFAULT_MACHINE_NAME)
+    run_podman("machine", "ssh", DEFAULT_MACHINE_NAME)
 
 
 def machine_remove():
-    run_cmd("machine", "rm", "-f", DEFAULT_MACHINE_NAME)
+    run_podman("machine", "rm", "-f", DEFAULT_MACHINE_NAME)
 
 
 def container_create(
@@ -60,7 +68,7 @@ def container_create(
 ):
     if cpus is None or disk_size is None or memory is None or swap_size is None:
         raise RuntimeError("--cpus, --disk-size, --memory, and --swap-size are required")
-    run_cmd(
+    run_podman(
         "--connection",
         DEFAULT_CONNECTION_NAME,
         "create",
@@ -85,15 +93,15 @@ def container_create(
 
 
 def container_start():
-    run_cmd("--connection", DEFAULT_CONNECTION_NAME, "start", DEFAULT_CONTAINER_NAME)
+    run_podman("--connection", DEFAULT_CONNECTION_NAME, "start", DEFAULT_CONTAINER_NAME)
 
 
 def container_stop():
-    run_cmd("--connection", DEFAULT_CONNECTION_NAME, "stop", DEFAULT_CONTAINER_NAME)
+    run_podman("--connection", DEFAULT_CONNECTION_NAME, "stop", DEFAULT_CONTAINER_NAME)
 
 
 def container_shell():
-    result = run_cmd(
+    result = run_podman(
         "--connection",
         DEFAULT_CONNECTION_NAME,
         "inspect",
@@ -104,9 +112,9 @@ def container_shell():
         capture_output=True,
     )
     if result.stdout.strip() != "true":
-        run_cmd("--connection", DEFAULT_CONNECTION_NAME, "start", DEFAULT_CONTAINER_NAME)
-    run_cmd("--connection", DEFAULT_CONNECTION_NAME, "exec", "-it", DEFAULT_CONTAINER_NAME, "bash")
+        run_podman("--connection", DEFAULT_CONNECTION_NAME, "start", DEFAULT_CONTAINER_NAME)
+    run_podman("--connection", DEFAULT_CONNECTION_NAME, "exec", "-it", DEFAULT_CONTAINER_NAME, "bash")
 
 
 def container_remove():
-    run_cmd("--connection", DEFAULT_CONNECTION_NAME, "rm", "-f", DEFAULT_CONTAINER_NAME)
+    run_podman("--connection", DEFAULT_CONNECTION_NAME, "rm", "-f", DEFAULT_CONTAINER_NAME)
