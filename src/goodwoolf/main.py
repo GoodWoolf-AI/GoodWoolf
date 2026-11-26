@@ -65,22 +65,6 @@ def _dataset_package_name(data_name):
     return f"goodwoolf.data.{vendor_name}.{dataset_name}.dataset"
 
 
-def _add_machine_name_option(parser, description):
-    parser.add_argument(
-        "--machine-name",
-        default=gw_machine.DEFAULT_MACHINE_NAME,
-        help=description,
-    )
-
-
-def _add_container_name_option(parser):
-    parser.add_argument(
-        "--container-name",
-        default=gw_machine.DEFAULT_CONTAINER_NAME,
-        help="Container name.",
-    )
-
-
 def _dataset_module(args):
     data_name = args.data_name
     if "/" not in data_name:
@@ -279,38 +263,30 @@ def _save(args):
 
 
 # ============================================================
-# MACHINE > CHECK
-# ============================================================
-def _machine_check(args):
-    _run_action(gw_machine.check_machine)
-
-
-# ============================================================
 # MACHINE > CREATE
 # ============================================================
 def _machine_create(args):
     _run_action(
-        gw_machine.setup_machine,
-        machine_name=args.machine_name,
+        gw_machine.machine_create,
         cpus=args.cpus,
         disk_size=args.disk_size,
-        ram_size=args.ram_size,
+        memory=args.memory,
         swap_size=args.swap_size,
     )
 
 
 # ============================================================
-# MACHINE > OPEN
+# MACHINE > SHELL
 # ============================================================
-def _machine_open(args):
-    _run_action(gw_machine.open_machine, machine_name=args.machine_name)
+def _machine_shell(args):
+    _run_action(gw_machine.machine_shell)
 
 
 # ============================================================
 # MACHINE > REMOVE
 # ============================================================
 def _machine_remove(args):
-    _run_action(gw_machine.clear_machine, machine_name=args.machine_name)
+    _run_action(gw_machine.machine_remove)
 
 
 # ============================================================
@@ -318,13 +294,10 @@ def _machine_remove(args):
 # ============================================================
 def _container_create(args):
     _run_action(
-        gw_machine.create_container,
-        machine_name=args.machine_name,
-        container_name=args.container_name,
-        image=args.image,
-        host_dir=args.host_dir,
-        container_dir=args.container_dir,
-        ram_size=args.ram_size,
+        gw_machine.container_create,
+        cpus=args.cpus,
+        disk_size=args.disk_size,
+        memory=args.memory,
         swap_size=args.swap_size,
     )
 
@@ -333,44 +306,28 @@ def _container_create(args):
 # CONTAINER > START
 # ============================================================
 def _container_start(args):
-    _run_action(
-        gw_machine.start_container,
-        machine_name=args.machine_name,
-        container_name=args.container_name,
-    )
+    _run_action(gw_machine.container_start)
 
 
 # ============================================================
 # CONTAINER > STOP
 # ============================================================
 def _container_stop(args):
-    _run_action(
-        gw_machine.stop_container,
-        machine_name=args.machine_name,
-        container_name=args.container_name,
-    )
+    _run_action(gw_machine.container_stop)
 
 
 # ============================================================
 # CONTAINER > SHELL
 # ============================================================
 def _container_shell(args):
-    _run_action(
-        gw_machine.open_container,
-        machine_name=args.machine_name,
-        container_name=args.container_name,
-    )
+    _run_action(gw_machine.container_shell)
 
 
 # ============================================================
 # CONTAINER > REMOVE
 # ============================================================
 def _container_remove(args):
-    _run_action(
-        gw_machine.remove_container,
-        machine_name=args.machine_name,
-        container_name=args.container_name,
-    )
+    _run_action(gw_machine.container_remove)
 
 
 # ============================================================
@@ -600,23 +557,39 @@ def build_parser():
         parser_class=CommandParser,
     )
 
-    machine_check = machine_commands.add_parser("check", help="Check Podman machine prerequisites.")
-    machine_check.set_defaults(func=_machine_check)
-
     machine_create = machine_commands.add_parser("create", help="Create and configure a Podman machine.")
-    _add_machine_name_option(machine_create, "Podman machine name.")
-    machine_create.add_argument("--cpus", type=int, default=gw_machine.DEFAULT_CPUS, help="Machine CPU count.")
-    machine_create.add_argument("--disk-size", type=int, required=True, help="Machine disk size in GiB.")
-    machine_create.add_argument("--ram-size", type=int, required=True, help="Machine memory in MiB.")
-    machine_create.add_argument("--swap-size", type=int, required=True, help="Swap file size in GiB.")
+    machine_create.add_argument(
+        "--cpus",
+        type=int,
+        default=gw_machine.DEFAULT_CPUS,
+        help=f"Machine CPU count (default: {gw_machine.DEFAULT_CPUS}).",
+    )
+    machine_create.add_argument(
+        "--disk-size",
+        type=int,
+        default=gw_machine.DEFAULT_DISK_SIZE,
+        help=f"Machine disk size in GiB (default: {gw_machine.DEFAULT_DISK_SIZE}G).",
+    )
+    machine_create.add_argument(
+        "--memory",
+        "--ram-size",
+        dest="memory",
+        type=int,
+        default=gw_machine.DEFAULT_MEMORY,
+        help=f"Machine memory in GiB (default: {gw_machine.DEFAULT_MEMORY}G).",
+    )
+    machine_create.add_argument(
+        "--swap-size",
+        type=int,
+        default=gw_machine.DEFAULT_SWAP_SIZE,
+        help=f"Machine swap in GiB (default: {gw_machine.DEFAULT_SWAP_SIZE}G).",
+    )
     machine_create.set_defaults(func=_machine_create)
 
-    machine_open = machine_commands.add_parser("open", help="Open a shell in a Podman machine.")
-    _add_machine_name_option(machine_open, "Podman machine name.")
-    machine_open.set_defaults(func=_machine_open)
+    machine_shell = machine_commands.add_parser("shell", help="Open a shell in a Podman machine.")
+    machine_shell.set_defaults(func=_machine_shell)
 
     machine_remove = machine_commands.add_parser("remove", help="Remove a Podman machine.")
-    _add_machine_name_option(machine_remove, "Podman machine name.")
     machine_remove.set_defaults(func=_machine_remove)
 
     # CONTAINER
@@ -629,17 +602,32 @@ def build_parser():
     )
 
     container_create = container_commands.add_parser("create", help="Create a Podman container.")
-    _add_machine_name_option(container_create, "Podman machine connection.")
-    _add_container_name_option(container_create)
-    container_create.add_argument("--image", default=gw_machine.DEFAULT_IMAGE, help="Container image.")
-    container_create.add_argument("--host-dir", default=".", help="Host directory mounted into the container.")
     container_create.add_argument(
-        "--container-dir",
-        default=gw_machine.DEFAULT_CONTAINER_DIR,
-        help="Container mount point for the host directory.",
+        "--cpus",
+        type=int,
+        default=gw_machine.DEFAULT_CPUS,
+        help=f"Container CPU count (default: {gw_machine.DEFAULT_CPUS}).",
     )
-    container_create.add_argument("--ram-size", type=int, required=True, help="Container memory in MiB.")
-    container_create.add_argument("--swap-size", type=int, required=True, help="Container swap in GiB.")
+    container_create.add_argument(
+        "--disk-size",
+        type=int,
+        default=gw_machine.DEFAULT_DISK_SIZE,
+        help=f"Container disk size in GiB (default: {gw_machine.DEFAULT_DISK_SIZE}G).",
+    )
+    container_create.add_argument(
+        "--memory",
+        "--ram-size",
+        dest="memory",
+        type=int,
+        default=gw_machine.DEFAULT_MEMORY,
+        help=f"Container memory in GiB (default: {gw_machine.DEFAULT_MEMORY}G).",
+    )
+    container_create.add_argument(
+        "--swap-size",
+        type=int,
+        default=gw_machine.DEFAULT_SWAP_SIZE,
+        help=f"Container swap in GiB (default: {gw_machine.DEFAULT_SWAP_SIZE}G).",
+    )
     container_create.set_defaults(func=_container_create)
 
     for name, description, handler in (
@@ -649,8 +637,6 @@ def build_parser():
         ("remove", "Remove a Podman container.", _container_remove),
     ):
         subparser = container_commands.add_parser(name, help=description)
-        _add_machine_name_option(subparser, "Podman machine connection.")
-        _add_container_name_option(subparser)
         subparser.set_defaults(func=handler)
 
     return parser
