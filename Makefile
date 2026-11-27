@@ -60,6 +60,7 @@ check-gh:
 .PHONY: check-version
 check-version:
 	@test -n "$(VERSION)" || { echo "Could not read version from pyproject.toml."; exit 1; }
+	@echo "Version: $(VERSION) (tag $(TAG))"
 	@git fetch --tags --quiet origin
 	@if git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null; then \
 		[ "$$(git rev-parse "$(TAG)^{commit}")" = "$$(git rev-parse HEAD)" ] || \
