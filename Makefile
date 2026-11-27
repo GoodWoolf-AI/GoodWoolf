@@ -85,9 +85,8 @@ check-release:
 
 .PHONY: release
 release: check-gh check-version check-release
-	rm -rf dist
+	$(MAKE) clean
 	$(MAKE) build
-	rm -f $(ARTIFACT)
 	(cd dist && zip -rq ../$(ARTIFACT) .)
 	@git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null || git tag $(TAG)
 	git push origin HEAD $(TAG)
