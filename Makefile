@@ -62,6 +62,11 @@ delete-tag:
 	-git tag -d $(TAG)
 	git push origin --delete $(TAG)
 
+.PHONY: delete-branch
+delete-branch:
+	-git branch -d $(BRANCH)
+	git push origin --delete $(BRANCH)
+
 .PHONY: check-version
 check-version:
 	@test -n "$(VERSION)" || { echo "Could not read version from pyproject.toml."; exit 1; }
